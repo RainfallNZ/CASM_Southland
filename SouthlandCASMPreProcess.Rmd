@@ -3,12 +3,6 @@ title: "R Notebook to preprocess water quality data for use with CASM, for Horiz
 output: html_notebook
 ---
 
-Some functions
-```{r}
-source("CASM_PrePostProcessorFunctions.R")
-
-```
-
 Set directories and data file names
 ```{r}
 #Set the project directory
@@ -49,6 +43,13 @@ PhysiographicDataFile <- "Environment_Southland_Physiographic_Zones" #An ESRI po
 WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
 
 WaterPlanClassificationRasterFile <- "ES_PlanClassification.tif" #A raster file
+
+```
+
+
+Load some functions
+```{r}
+source(file.path(ProjectDirectory,"../CASM-PrePostProcessor/CASM_PrePostProcessorFunctions.R"))
 
 ```
 
