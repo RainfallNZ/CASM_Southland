@@ -1,0 +1,57 @@
+library(shiny)
+library(leaflet)
+library(htmltools)
+
+#r_colors <- rgb(t(col2rgb(colors()) / 255))
+#names(r_colors) <- colors()
+reprojected.data.WGS84 <- readRDS("Data/SpatialData.RDS")
+MeasurementSiteLabels <- lapply(seq(nrow(reprojected.data.WGS84$MeasurementSites@data)), function(i) {
+  paste0("Measurement site:", '</br>', 
+         reprojected.data.WGS84$MeasurementSites@data[i, "sitename"]) 
+})
+
+EstuarySiteLabels <- lapply(seq(nrow(reprojected.data.WGS84$EstuarySites@data)), function(i) {
+  paste0("Estuary site:", '</br>', 
+         reprojected.data.WGS84$EstuarySites@data[i, "Name"]) 
+})
+
+LakeSiteLabels <- lapply(seq(nrow(reprojected.data.WGS84$LakeSites@data)), function(i) {
+  paste0("Lake site:", '</br>', 
+         reprojected.data.WGS84$LakeSites@data[i, "Lake_Name"]) 
+})
+
+ExtraSiteLabels <- lapply(seq(nrow(reprojected.data.WGS84$ExtraSites@data)), function(i) {
+  paste0("Major subcatchment: ", 
+         reprojected.data.WGS84$ExtraSites@data[i, "id"],'</br>',reprojected.data.WGS84$ExtraSites@data[i, "Reason"]) 
+})
+
+
+map <- leaflet::leaflet() %>% 
+  leaflet::addProviderTiles(providers$OpenStreetMap) %>%
+  setView(lng=168,lat=-46.0,zoom=9) %>% 
+  #addPolygons(data = reprojected.data.WGS84$SubZones, color = "black", weight = 3, fillColor = "transparent", label = ~htmlEscape(Zone_Code)) %>%
+  addCircleMarkers(data = reprojected.data.WGS84$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = reprojected.data.WGS84$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = reprojected.data.WGS84$EstuarySites, color = "turquoise", fillOpacity = 0.5,label = lapply(EstuarySiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = reprojected.data.WGS84$ExtraSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(ExtraSiteLabels, htmltools::HTML)) %>%
+  addPolylines(data = reprojected.data.WGS84$MajorCatchments, color= "black", label = ~htmlEscape(FactSheetZ)) %>%
+  addPolylines(data = reprojected.data.WGS84$RiverNetwork, color= "blue", label = ~htmlEscape(nzsegment)) %>%
+  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","#0066CC"), labels = c("Measurement SItes","Lake Sites","Estuary Sites","Major subcatchments"),
+            title = "Sites",
+            opacity = 1)
+
+map
+
+ui <- fluidPage(
+  titlePanel("LWP"),
+  leafletOutput("mymap", height = "100vh"),
+  
+)
+
+server <- function(input, output, session) {
+  
+  output$mymap <- renderLeaflet({map})
+  
+}
+
+shinyApp(ui, server)
