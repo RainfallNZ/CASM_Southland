@@ -3,6 +3,19 @@ title: "R Notebook to preprocess water quality data for use with CASM, for Horiz
 output: html_notebook
 ---
 
+load some libraries
+```{r}
+if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+if (!require(rgeos)) install.packages("rgeos"); library(rgeos)                #used for spatial processing
+if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
+if (!require(leaflet)) install.packages("leaflet"); library(leaflet)                #used for spatial processing
+if (!require(rmapshaper)) install.packages("rmapshaper"); library(rmapshaper)                #used for spatial processing
+if (!require(devtools)) install.packages("devtools"); library(devtools)                #Needed to load libraries from github
+if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
+
+```
+
+
 Set directories and data file names
 ```{r}
 #Set the project directory
@@ -43,13 +56,6 @@ PhysiographicDataFile <- "Environment_Southland_Physiographic_Zones" #An ESRI po
 WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
 
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
-
-```
-
-
-Load some functions
-```{r}
-source(file.path(ProjectDirectory,"../CASM-PrePostProcessor/CASM_PrePostProcessorFunctions.R"))
 
 ```
 
@@ -174,6 +180,19 @@ GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 
 ```
 
+
+Rasterise the Southland REC vector layer to 8 m x 8m resolution
+```{r}
+REC3Watersheds <- readOGR(dsn = GISDataDirectory,layer = "ESWaterShedsWithPlanClasses")
+  #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
+RasterBase <- raster(resolution = 8, ext = extent(REC3Watersheds), crs = proj4string(REC3Watersheds) )
+  REC3WatershedsRaster <- rasterize(REC3Watersheds,RasterBase,field="WaterPlanC",fun=max)
+   writeRaster(TotalRaster,file.path(GISDataDirectory,"REC3WaterPlan_8m.tiff"),overwrite=TRUE)
+   
+   REC2Watersheds <- readOGR(dsn = GISDataDirectory,layer = "ESWaterShedsWithPlanClasses")
+```
+
+
 Not sure if the following is needed anymore.
 Get the "nzsegment" attributes of the lowest reach in each of the major catchments
 ```{r}
@@ -206,6 +225,7 @@ CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% Complet
 ```
 
 Then create a tributary table ready for CASM
+**** This needs an Outlet Reach Name lookup table to be manually prepared ****
 ```{r}
 
 NetworkLabelList <- NetworkLabeler(CompleteSpatialNetwork)
@@ -213,10 +233,10 @@ NetworkLabelList <- NetworkLabeler(CompleteSpatialNetwork)
 
 #Add the tributary labels to the network
 SegmentToLabelLookUpTable <- do.call(rbind,NetworkLabelList)
-CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$Label[match(CompleteSpatialNetwork@data$nzsgmnt,SegmentToLabelLookUpTable$nzsgmnt)]
+CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$Label[match(CompleteSpatialNetwork@data$nzsegment,SegmentToLabelLookUpTable$nzsgmnt)]
 #Add the prefixed labels to the network
 SegmentToPrefixedLabelLookUpTable <- ReachLabeler(NetworkLabelList, OutletReachNames)
-CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsgmnt,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
+CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsegment,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
 
 #Add the 
 #Save the network as a spatial file
@@ -235,7 +255,7 @@ PointSourceNodes <- PointSourceSites[,c("Site.Name","nzsegment")]
 #Standardise the column names so that it matches the expected format in the CASMNodeTablePreparer() function
 names(PointSourceNodes) <- c("NodeName","nzsgmnt")
 
-#Prepare the CASM table with the bonus nzsgmnt column
+#Prepare the CASM table with the bonus nzsegment column
 PointSourceTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes = PointSourceNodes )
 
 #rename the columns to match the CASM requirements
@@ -315,7 +335,7 @@ Raster mapping is from here https://stackoverflow.com/questions/59110756/failed-
 
 Speed improvements were undertaken following https://stackoverflow.com/questions/44356224/leaflet-shiny-integration-slow
 ```{r}
-library(rmapshaper)
+
 
 RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
 RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
