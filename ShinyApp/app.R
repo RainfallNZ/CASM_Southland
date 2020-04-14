@@ -95,19 +95,19 @@ map <- map %>%
             group="Physiographic Zones")
 
 #Add the Water Plan Classification raster
-WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
-                     na.color = "transparent")
-map <- map %>%
-  addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
-  addLegend(pal = WPpal, 
-            values = values(MapData$WaterPlan),
-            title = "Water Plan Classes",
-            labFormat  = labelFormat(
-              transform = function(x) {
-                levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
-              }),
-            layerId = "Water Plan Classess",
-            group="Water Plan Classes")
+#WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
+#                     na.color = "transparent")
+# map <- map %>%
+#   addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
+#   addLegend(pal = WPpal, 
+#             values = values(MapData$WaterPlan),
+#             title = "Water Plan Classes",
+#             labFormat  = labelFormat(
+#               transform = function(x) {
+#                 levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
+#               }),
+#             layerId = "Water Plan Classess",
+#             group="Water Plan Classes")
 
 
 map <- map %>%
@@ -124,11 +124,11 @@ map <- map %>%
             opacity = 1) %>%
   
   addLayersControl(
-    overlayGroups =c("Major Catchments","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+    overlayGroups =c("Major Catchments","Physiographic Zones", "River Network", "Groundwater Management Zones"),
     options = layersControlOptions(collapsed=FALSE)
   ) %>%
   
-  hideGroup(c("Major Catchments","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
 

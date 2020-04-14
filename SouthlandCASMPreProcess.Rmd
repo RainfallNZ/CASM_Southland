@@ -42,7 +42,7 @@ PhysiographicDataFile <- "Environment_Southland_Physiographic_Zones" #An ESRI po
 
 WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
 
-WaterPlanClassificationRasterFile <- "ES_PlanClassification.tif" #A raster file
+WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 
 ```
 
@@ -317,8 +317,8 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 ```{r}
 library(rmapshaper)
 
-RECForMaps <- RECReachNetwork[sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1,]
-RECForMaps$LineWidthPixels <- as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)
+RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
 RECForMaps <- RECForMaps[,"LineWidthPixels"]
 RECForMaps <- ms_simplify(RECForMaps)
 
@@ -457,7 +457,7 @@ map <- map %>%
 map
 
 #save the mapdata as an R file so that it can be used in an RShinyApp
-saveRDS(MapData,file.path(ProjectDirectory,"/ShinyApp/Data","SpatialData.RDS"))
+saveRDS(MapData,file.path(ProjectDirectory,"/R/CASM_Southland/ShinyApp/Data","SpatialData.RDS"))
 ```
 
 
