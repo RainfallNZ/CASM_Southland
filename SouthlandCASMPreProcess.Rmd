@@ -29,9 +29,12 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 
 #REC data is available from the MfE data service. See https://data.mfe.govt.nz/layer/51826-river-environment-classification-manawatu-2010/ and https://data.mfe.govt.nz/layer/51847-river-environment-classification-watershed-manawatu-2010/
 
-REC_rivers <- "SouthlandREC2"
+#REC_rivers <- "ES_REC2_Riverlines"
 
-REC_Catchments <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
+#Or an REC3 version
+REC_rivers <- "ES_REC3_Riverlines"
+
+#REC_Catchments <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
 
 REC_MeanFlowFile <- file.path(DataDirectory,"REC2MeanFlow.RData")  #This is an RData file
 
@@ -57,6 +60,8 @@ WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
 
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 
+NZsegmentToWaterPlanClassLookUpTableFile <-  "NZsegmentToWaterPlan.csv"
+
 ```
 
 
@@ -77,16 +82,48 @@ outerRings = Filter(function(f){f@ringDir==1},CompleteDomain@polygons[[1]]@Polyg
 CompleteDomain = SpatialPolygons(list(Polygons(outerRings,ID=1)))
 crs(CompleteDomain) <- crs(MajorCatchments)
 
+#Load the lookup table between REC2 nzsegment and Environment Southland's Water Plan class
+NZsegmentToWaterPlanClassLookUpTable <- read.table(file.path(DataDirectory,NZsegmentToWaterPlanClassLookUpTableFile), sep=",", stringsAsFactors = FALSE,header = TRUE)
+
+#If the lookup table is not available then it can be recreated using the code immediately below
+# {
+# #Read in the REC riverlines that have bee converted to points
+# REC2RiverLinePOints <- readOGR(dsn = GISDataDirectory,layer = "ES_REC2_Riverline_Vertices_WaterPlan")
+# 
+# REC2RiverlinePointData <- REC2RiverLinePOints@data
+# rm(REC2RiverLinePOints) #to free up memory
+# 
+# #Aggregate on NZSegment, returning the majority of WaterPlan
+# REC2ToWaterPlanLUT <- aggregate(REC2RiverlinePointData$WaterPlan,list(REC2RiverlinePointData$nzsegment),FUN= modal)
+# names(REC2ToWaterPlanLUT) <- c("nzsegment","Number")
+# REC2ToWaterPlanLUT$Name <-   c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")[REC2ToWaterPlanLUT$Number]
+# 
+# #Export as a csv file
+# write.table(REC2ToWaterPlanLUT,file=file.path(DataDirectory,NZsegmentToWaterPlanClassLookUpTableFile), sep=",",row.names = FALSE)
+# }
 
 #REC data has been sourced from LWP data stores. It has cut down versions of the attribute names, e.g. nzsegment is nzsgmnt. Keep an eye on this when comparing to other data sources that may have the full RECV2 attribute names.
-RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory),
-                           layer = REC_rivers)
+RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
+                           layer = REC_rivers, stringsAsFactors = FALSE)
 
 RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
+
+#For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
+#nzseg_v3 to nzsegment
+names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "nzseg_v3")] <- "nzsegment"
+#ups_length to headw_dist
+names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "ups_length")] <- "headw_dist"
+
+#For the REC3 network, need to make some columns numeric
+RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")] <- lapply(RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")],as.numeric)
+
+##Add the Environment Southland Water Plan Class to the REC2 data
+#RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$Name[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
+
 #REstrict it to just the major catchments of interest
 #RECReachNetwork <- gIntersection(RECReachNetwork,CompleteDomain,byid =TRUE)
 
-#RECWatersheds <- readOGR(dsn = GISDataDirectory,
+#RECWatersheds <- readOGR(dsn = file.path(GISDataDirectory,REC_Catchments),
 #                         layer = REC_Catchments)
 #RECWatersheds <- spTransform(RECWatersheds,CRS("+init=epsg:2193") )
 
@@ -94,7 +131,7 @@ RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
 #load(REC_MeanFlowFile)
 
 #Load the Southland water quality measurement site data
-MeasurementSites <- readOGR(dsn =file.path(GISDataDirectory),
+MeasurementSites <- readOGR(dsn =file.path(GISDataDirectory,WaterQualityStationFile),
                            layer = WaterQualityStationFile, stringsAsFactors = FALSE)
 MeasurementSites <- spTransform(MeasurementSites,CRS("+init=epsg:2193") )
 
@@ -102,7 +139,7 @@ MeasurementSites <- spTransform(MeasurementSites,CRS("+init=epsg:2193") )
 MeasurementSites$nzsegment <- as.numeric(MeasurementSites$nzsegment)
 
 #Load lake sites of interest
-LakeSites <- readOGR(dsn =file.path(GISDataDirectory),
+LakeSites <- readOGR(dsn =file.path(GISDataDirectory,LakeSiteFile),
                            layer = LakeSiteFile, stringsAsFactors = FALSE)
 LakeSites <- spTransform(LakeSites,CRS("+init=epsg:2193") )
 
@@ -149,18 +186,24 @@ Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
 #WaterPlanClassification <- readOGR(dsn = file.path(GISDataDirectory,WaterPlanClassificationFile), layer =WaterPlanClassificationFile, stringsAsFactors = FALSE)
 #WaterPlanClassification <- spTransform(WaterPlanClassification,CRS("+init=epsg:2193") )
   
-    
-#Load the Water Plan classification raster data
-  WaterPlanRaster <- raster(WaterPlanClassificationRasterFile)
-  
-  #reproject to WGS84 for mapping
-  WaterPlanRasterWGS84 <- projectRaster(WaterPlanRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
-  WaterPlanRasterWGS84 <- ratify(WaterPlanRasterWGS84)
-  WaterPlanClassRAT <- levels(WaterPlanRasterWGS84)[[1]]
-  WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
-  levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
 
-#Load the Groundwater Management Zone data
+
+
+
+# #Load the Water Plan classification raster data
+#   WaterPlanRaster <- raster(WaterPlanClassificationRasterFile)
+#   
+#   #reproject to WGS84 for mapping
+#   WaterPlanRasterWGS84 <- projectRaster(WaterPlanRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+#   WaterPlanRasterWGS84 <- ratify(WaterPlanRasterWGS84)
+#   WaterPlanClassRAT <- levels(WaterPlanRasterWGS84)[[1]]
+#   WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
+#   levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
+
+
+
+  
+  #Load the Groundwater Management Zone data
 GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
 GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
@@ -181,15 +224,41 @@ GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 ```
 
 
-Rasterise the Southland REC vector layer to 8 m x 8m resolution
+
+***Need to do the full processing from REC3 to REC2 here
+rasterize REC3
+
+Can't get this to work efficiently yet !! buffer on majority of nearest neighbor seems to take too long.
+sample REC2 points from raster
+agregate points on nzsegment and majority of the REC3 attribute
+
 ```{r}
-REC3Watersheds <- readOGR(dsn = GISDataDirectory,layer = "ESWaterShedsWithPlanClasses")
-  #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
-RasterBase <- raster(resolution = 8, ext = extent(REC3Watersheds), crs = proj4string(REC3Watersheds) )
-  REC3WatershedsRaster <- rasterize(REC3Watersheds,RasterBase,field="WaterPlanC",fun=max)
-   writeRaster(TotalRaster,file.path(GISDataDirectory,"REC3WaterPlan_8m.tiff"),overwrite=TRUE)
-   
-   REC2Watersheds <- readOGR(dsn = GISDataDirectory,layer = "ESWaterShedsWithPlanClasses")
+#Load the high resolution Water Plan Class raster
+# WaterPlanRasterHiRes <- raster(file.path(GISDataDirectory,"WaterPlan_8m.tif"))
+# 
+# Mode <- function(x) {
+#   ux <- unique(na.omit(x))
+#   ux[which.max(tabulate(match(x, ux)))]
+# }
+# 
+# fill.na <- function(x, i=5) {
+#   if( is.na(x)[i] ) {
+#     return( Mode(x))
+#   } else {
+#     return( x[i] )
+#   }
+# }
+# library(tictoc)
+# 
+# {
+#   tic()
+# 
+# WaterPlanRasterHiResNAFilled <- focal(WaterPlanRasterHiRes, w = matrix(1,3,3), fun= fill.na, pad=TRUE, na.rm=FALSE)
+# writeRaster(WaterPlanRasterHiResNAFilled,file.path(GISDataDirectory,"WaterPlanRasterNAFilled.tiff"))
+# toc()
+# }
+
+
 ```
 
 
@@ -213,13 +282,15 @@ MajorCatchmentOuteltReachesDF <- do.call(rbind,MajorCatchmentOuteltReaches)
 ```
 
 
-From the load sites, point source sites, and water management subzones outlets, create the required network
+From the load sites, point source sites, and water management subzones outlets, create the required network.
+!!This doesn't work with REC3!! as all the nzsegment values are REC2 values.
 ```{r}
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
 AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, ExtraSites$nzsegment, OutletReaches = RiverMouthSites$nzsegment)
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
+CompleteNetwork <- as.numeric(CompleteNetwork)
 
 CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% CompleteNetwork,]
 ```
@@ -337,9 +408,15 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 ```{r}
 
 
-RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
-RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
-RECForMaps <- RECForMaps[,"LineWidthPixels"]
+#RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+#RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
+
+#Just get the network needed for the map. For REC3, the headw_dist divisor is 2000, for RECV2 it is 200, so need to edit this.
+RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/1000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/1000)) #SCale the line width, with a minimum of 1 pixel
+
+RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlanC")]
+RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlanC)
 RECForMaps <- ms_simplify(RECForMaps)
 
 MajorCatchments <- ms_simplify(MajorCatchments)
@@ -352,7 +429,7 @@ SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,Estuar
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 MapData$Physiography <- PhysiographyRasterWGS84
-MapData$WaterPlan <- WaterPlanRasterWGS84
+#MapData$WaterPlan <- WaterPlanRasterWGS84
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
@@ -438,18 +515,35 @@ map <- map %>%
             layerId = "Physiography",
             group="Physiographic Zones")
 
-#Add the Water Plan Classification raster
-WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
+# #Add the Water Plan Classification raster
+# WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
+#                     na.color = "transparent")
+# map <- map %>%
+#   addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
+#   addLegend(pal = WPpal, 
+#             values = values(MapData$WaterPlan),
+#             title = "Water Plan Classes",
+#             labFormat  = labelFormat(
+#             transform = function(x) {
+#               levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
+#             }),
+#             layerId = "Water Plan Classess",
+#             group="Water Plan Classes")
+
+#Add the river network coloured by Water PLan Class
+WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
                     na.color = "transparent")
+
 map <- map %>%
-  addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
-  addLegend(pal = WPpal, 
-            values = values(MapData$WaterPlan),
+  addPolylines(data = MapData$RiverNetwork, color= ~WPpal2(WaterPlan), weight = ~LineWidthPixels, label = ~WaterPlan, opacity = 1,group= "Water Plan Classes") %>%
+    addLegend(pal = WPpal2, 
+            values = MapData$RiverNetwork$WaterPlan,
             title = "Water Plan Classes",
-            labFormat  = labelFormat(
-            transform = function(x) {
-              levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
-            }),
+            opacity = 1,
+            #labFormat  = labelFormat(
+            #transform = function(x) {
+            #  levels(MapData$RiverNetwork$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$RiverNetwork$WaterPlan)[[1]]$ID == x)]
+            #}),
             layerId = "Water Plan Classess",
             group="Water Plan Classes")
   

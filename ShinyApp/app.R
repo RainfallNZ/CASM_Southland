@@ -109,6 +109,22 @@ map <- map %>%
 #             layerId = "Water Plan Classess",
 #             group="Water Plan Classes")
 
+#Add the river network coloured by Water PLan Class
+WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
+                      na.color = "transparent")
+
+map <- map %>%
+  addPolylines(data = MapData$RiverNetwork, color= ~WPpal2(WaterPlan), weight = ~LineWidthPixels, label = ~WaterPlan, opacity = 1,group= "Water Plan Classes") %>%
+  addLegend(pal = WPpal2, 
+            values = MapData$RiverNetwork$WaterPlan,
+            title = "Water Plan Classes",
+            opacity = 1,
+            #labFormat  = labelFormat(
+            #transform = function(x) {
+            #  levels(MapData$RiverNetwork$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$RiverNetwork$WaterPlan)[[1]]$ID == x)]
+            #}),
+            layerId = "Water Plan Classess",
+            group="Water Plan Classes")
 
 map <- map %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
@@ -124,11 +140,11 @@ map <- map %>%
             opacity = 1) %>%
   
   addLayersControl(
-    overlayGroups =c("Major Catchments","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+    overlayGroups =c("Major Catchments","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
     options = layersControlOptions(collapsed=FALSE)
   ) %>%
   
-  hideGroup(c("Major Catchments","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
 

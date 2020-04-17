@@ -5,9 +5,9 @@ account: landwaterpeople
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 2040243
-bundleId: 2990318
+bundleId: 3024623
 url: https://landwaterpeople.shinyapps.io/ES-CASM-Network/
-when: 1586405519.79703
+when: 1587080133.18688
 asMultiple: FALSE
 asStatic: FALSE
 ignoredFiles: app.R.old
