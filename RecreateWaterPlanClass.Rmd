@@ -1,0 +1,134 @@
+---
+title: "R Notebook to re-create the Environment Southland Water Plan Classification."
+output: html_notebook
+---
+
+**Tim Kerr**  
+**Rainfall.NZ** *for*  
+**LWP**  
+April 2020  
+
+## Background 
+Environment Southland have defined a classification of the river network for use in defining plan rules and policies. The clasification has been called the "Water Plan" classification.  
+
+The ES Water Plan classes are:
+
+* Natural State  
+* Lowland Soft bed  
+* Lowland Hard bed  
+* Hill  
+* Mountain  
+* Lake fed  
+* Spring fed  
+
+Water quality scenario modeliing needs to consider these classes.  
+The Water Plan classes were prepared iteratively from a combination of other river classes using objective and subjective methods.  
+An overview of that derivation is available [here](https://harrcons.sharepoint.com/:w:/r/sites/SouthlandRegionalForumModelling/Shared%20Documents/Data/WaterPlanClassesREC2/how%20the%20management%20classes%20were%20mapped.docx?d=w5372cb3cb8a64d6e88220080ffa092e5&csf=1&web=1&e=DyXY1L).  
+
+### REC Versions  
+Environment Southland utilise a third version of the River Environment Classification (REC3) as a digital representation of Southland's river network.  
+The early iterations of the Water Plan were prepared in REC1 using pre-existing classifications. Many of these pre-existing clssifications were transferred to REC3 so that an REC3 version of the Water Plan Classification could be prepared. The transfer of the pre-existing classes to REC3 is described in [Fraser (2019)](https://harrcons.sharepoint.com/:w:/r/sites/SouthlandRegionalCouncilJointProjects/Shared%20Documents/Report/REC3_ClassificationReport_v2.docx?d=wc80607d04b0c4476abdbf465132ed5ef&csf=1&web=1&e=wfW452).  
+
+The later versions of the Water Plan Classification were modified in REC3. To date this has mainly been with respect the "Natural" class.  
+In the course of these iterations no definitive version of the Water Plan emerged. The REC3 version is missing the "Spring fed" class. The REC1 version has additional "Matuara" and "Lake" classes.  
+
+Water quality modelling by LWP is to be undertaken in REC2. This alligns with pre-existing modeling scripts.
+Each version of REC has a different river reach identification attribute. The networks them selves are different so no direct one-to-one relationship exists between the river reach's of one version and another. REC2 does have an imperfect link to REC1.
+This script updates the Water Plan classification in REC1 to match what is understood to be a close match to the desired Water Plan Classification.  
+
+## Output
+The output of this script are two files in comma separated variable format listing the REC reach identification number, and the associated Water Plan class. One file is for REC1, one is for REC2.
+
+
+
+set directories and file names
+```{r, echo=FALSE, results="hide"}
+ProjectDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling"
+DataDirectory <- file.path(ProjectDirectory,"Data")
+GISDirectory <- file.path(DataDirectory,"GIS")
+
+#DBF file of the REC2 shapefile. It must have "nzsegment" and "NZREACH" attributes
+REC2DBFFile <- file.path(GISDirectory,"ES_REC2_Riverlines","ES_REC2_Riverlines.dbf")
+
+#DBF file of the REC1 shapefile that has attributes required to generate the Water Plan
+REC1WithESWaterPlanAttributes <- file.path(GISDirectory,"REC1WaterPlan","REC1WaterPlan.dbf")
+```
+
+
+Load libraries and source functions
+```{r, echo=FALSE, results="hide"}
+if (!require(foreign)) install.packages("foreign"); library(foreign)                #enables loading of a DBF file
+
+```
+
+Load the REC2 data for Southland
+```{r, echo=FALSE, results="hide"}
+#This is an REC data file with up catchment average elevation already calculated.
+SouthlandREC2 <- read.dbf(REC2DBFFile)
+SouthlandREC1 <- read.dbf(REC1WithESWaterPlanAttributes)
+
+```
+
+
+The REC1 attribute that is closest to the required Water Plan Classification is "Quality_ST".  
+This has 13 classes instead of the 7 required. Three of them are "Mataura" classes, that have now been abandoned.  
+Three are Lake classes.  
+The Mataura classes can be returned to one of:
+* Lowland Soft bed
+* Lowland Hard bed
+* Hill
+* Mountain  
+The Lake classes can be converted to Lake fed.  
+The "Lowland soft bed" and "Lowland hard bed" classes can be derived from the REC1 attributes "Source_OF_" and "GEOLOGY".
+"Source_OF_" stands for source of flow and is a five-class classification:
+```{r}
+unique(SouthlandREC1$SOURCE_OF_)
+```
+The classes stand for L: lowland, H: Hill, M: Mountain, GM: glacial mountain, and Lk: Lake fed.  
+
+"GEOLOGY" is a 7-class classification:
+```{r}
+unique(SouthlandREC1$GEOLOGY)
+```
+"SS","AL and "Pl" are considered soft-bed geologies, and the others are hard bed.
+
+The following code removes and replaces the old "Mataura" classes, and converts the various lake classes to "Lake fed".
+It then generates the output tables as files.
+
+```{r}
+#Find which reaches have a "Mataura" Water Plan class
+MatauraReachIndices <- which(SouthlandREC1$QUALITY_ST %in% c("Mataura 1","Mataura 2","Mataura 3") )
+
+#Reclass the GEOLOGY classification into a Soft bed (SS, AL or Pl) or Hard Bed (everything else)
+LowlandSoftBedIndices <- which(SouthlandREC1$GEOLOGY %in% c("SS", "AL", "Pl") & SouthlandREC1$SOURCE_OF_ == "L")
+LowlandHardBedindices <- which(!SouthlandREC1$GEOLOGY %in% c("SS", "AL", "Pl") & SouthlandREC1$SOURCE_OF_ == "L")
+HillIndices           <- which(SouthlandREC1$SOURCE_OF_ == "H")
+MountainIndices       <- which(SouthlandREC1$SOURCE_OF_ == "M")
+
+#Create a new dataframe with just the REC1 number and what will become the Water Plan class
+REC2WaterPlan <- SouthlandREC1[,c("NZREACH","QUALITY_ST")]
+
+
+#Change the levels around
+REC2WaterPlan$QUALITY_ST[base::intersect(MatauraReachIndices,LowlandSoftBedIndices)] <- "Lowland soft bed"
+REC2WaterPlan$QUALITY_ST[base::intersect(MatauraReachIndices,LowlandHardBedindices)] <- "Lowland hard bed"
+REC2WaterPlan$QUALITY_ST[base::intersect(MatauraReachIndices,HillIndices)]           <- "Hill"
+REC2WaterPlan$QUALITY_ST[base::intersect(MatauraReachIndices,MountainIndices)]       <- "Mountain"
+REC2WaterPlan$QUALITY_ST[which(REC2WaterPlan$QUALITY_ST %in% c("Hilly lakes","Mountain lakes","Lowland / Coastal lakes"))] <- "Lake fed"
+REC2WaterPlan$QUALITY_ST <- droplevels(REC2WaterPlan$QUALITY_ST)
+
+names(REC2WaterPlan)[2] <- "WaterPlan"
+
+write.csv(REC2WaterPlan,file.path(DataDirectory,"REC1WaterPlan.csv"))
+
+REC2WaterPlan <- merge(SouthlandREC2[,c("nzsegment","nzreach_re")],REC2WaterPlan,by.x="nzreach_re",by.y="NZREACH",type="left")
+
+write.csv(REC2WaterPlan[,c("nzsegment","WaterPlan")],file.path(DataDirectory,"REC2WaterPlan.csv"))
+
+list.files(DataDirectory,"^.*WaterPlan.csv",full.names = TRUE)
+```
+
+# References
+Fraser, C., 2009, REC3 ‘Source of Flow’ and ‘Geology’ classifications, Derivation method and comparison with REC1 definitions. Confidential client report for Environment Southland by Land Water People Ltd. LWP Client Report 2019-06. LWP, Christchurch.  
+
+
