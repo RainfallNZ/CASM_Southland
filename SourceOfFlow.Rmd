@@ -1,0 +1,196 @@
+---
+title: "R Notebook to create a Source-Of-Flow attribute in REC2 which matches the REC1 "SRC_OF_FLW" attribute.
+output: html_notebook
+---
+
+Tim Kerr
+Rainfall.NZ for LWP.
+
+April 2020
+
+This has been prepared based on the report:
+Fraser, C., 2009, REC3 ‘Source of Flow’ and ‘Geology’ classifications, Derivation method and comparison with REC1 definitions. Confidential client report for Environment Southland by Land Water People Ltd. LWP Client Report 2019-06. LWP, Christchurch.
+
+Outline
+Source of flow is a 5 class classification for rivers where the classes are:
+Lowland, Hill country, Mountains, Glacial Mountains and Lakes.
+The original source data and methods of preparation have been lost to antiquity, so emulating the classes for new versions of REC is non-trivial.
+Caroline Fraser (LWP) developed a method of deriving the classes based on watershed average elevation, upstream average elevation, watershed area, upstream area and stream order, attributes reasonably easily derived for any new REC version.
+
+Caroline developed the process to generate REC3 source of flow.
+
+This script is a replication of Caroline's work except for REC2
+
+
+set directories and file names
+```{r}
+ProjectDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling"
+DataDirectory <- file.path(ProjectDirectory,"Data")
+GISDirectory <- file.path(DataDirectory,"GIS")
+
+WatershedsDBFFile <- file.path(GISDirectory,"ES_REC2_Watersheds","ES_REC2_Watersheds.dbf")
+RiverlinesDBFFIle <- file.path(GISDirectory,"ES_REC2_Riverlines","ES_REC2_Riverlines.dbf")
+
+REC1ToREC2File <- file.path(GISDirectory,"REC1REC2Intsn","REC1REC2Intsn.dbf")
+
+REC2FUnctions <- file.path(ProjectDirectory,"R","CASM_Southland","GeneralFunctionsForREC2_v10.R")
+
+REC1UtilityFile <- file.path(DataDirectory,"REC1Utility.rdata")  #This contains a dataframe called REC1Utility, which has a whole bunch of REC1 attributes, including "SRC_OF_FLW" which is what we are trying to replicate in REC2
+
+REC1WithESWaterPlanAttributes <- file.path(GISDirectory,"REC1WaterPlan","REC1WaterPlan.dbf")
+```
+
+
+Load libraries and source functions
+```{r}
+if (!require(foreign)) install.packages("foreign"); library(foreign)                #enables loading of a DBF file
+if (!require(dplyr)) install.packages("dplyr"); library(dplyr)                #enables left_join function
+#if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+#if (!require(rgeos)) install.packages("rgeos"); library(rgeos)                #used for spatial processing
+
+
+source(REC2FUnctions)
+```
+
+Load the REC2 data Southland
+```{r}
+#This is an REC data file with up catchment average elevation already calculated.
+SouthlandREC2 <- read.table(file.path(DataDirectory,"SouthlandREC2_tk.csv"),sep=",", stringsAsFactors = FALSE, header = TRUE)
+
+REC1ToREC2All <- read.dbf(REC1ToREC2File)
+
+load(REC1UtilityFile)   #This provides the REC1Utility data frame
+#Cut it down to Southland
+SouthlandREC1 <- REC1Utility[REC1Utility$Region == "S",]
+rm(REC1Utility)
+SouthlandREC1Extra <- read.dbf(REC1WithESWaterPlanAttributes)
+
+```
+
+
+If it is necesary to recreate the aggregated upstream mean elevation attribute, that can be done here.
+```{r}
+
+#These are the attribute data for the ESRI vector data for the riverlines and the watersheds. They have been pre-processed in QGIS to have mean elevation of each watershed. This was done using focal statistics tool.
+WaterSheds <- read.dbf(WatershedsDBFFile)
+Riverlines <- read.dbf(RiverlinesDBFFIle)
+
+SouthlandREC2 <- join(Riverlines,WaterSheds[,c("nzsegment","ElevAve")], by="nzsegment")
+
+######################################################################################
+#  Downstream Aggregation with area weighting (gives UPST average)                   #
+######################################################################################
+#This is a slight variation on a disaggregation function commonly used by LWP. I think the difference was required becuase I misused the IDnew parameter to the function.
+#I found this function a bit confusing.
+#It requires preparation of an IDSort vector, and a Reach vector.
+DstAggr_AreaAvg=function(IDSort=NULL,Aggrvar=NULL,segArea=NULL,upstArea=NULL,Reach=Reach,IDnew=NULL){
+  
+  val<-sort(unique(IDSort))                                 #Determines the order to do the calculations
+  OUTPUT<-vector(mode="numeric",length=length(Reach)) *NA   #Initiate output matrix
+  OUTPUT[IDnew[which(IDSort==1)]]<-Aggrvar[which(IDSort==1)] #Fill in the 1st order streams (which are just the local values)
+  print("Start accumulation....")
+  for (i in 2:length(val)){
+    index2<-which(IDSort==val[i])
+    index<-IDnew[index2]
+    for (j in 1:length(index)){
+      
+      OUTPUT[index[j]]<-(sum(OUTPUT[Reach[[index[j]]]]*upstArea[Reach[[index[j]]]])+Aggrvar[index2[j]]*segArea[index2[j]])/upstArea[index2[j]]  #This ammended version worked
+      #OUTPUT[index[j]]<-(sum(OUTPUT[Reach[[index[j]]]]*upstArea[[IDnew[index[j]]]]+Aggrvar[index2[j]]*segArea[index2[j]])/upstArea[index2[j]]  #This version did not work
+    } 
+  }
+  OUTPUT<-OUTPUT[IDnew];OUTPUT[OUTPUT==0]<-NA
+  return(OUTPUT)
+}
+
+#  Create a list for each reach, which has all of that reach's immediate upstream reaches in it. This is needed to work the downstrea aggregation function above.
+# At the same time create a vector of the number of immediately-upstream reach's for each reach.
+Reach<-list()
+LReach<-seq(1,nrow(SouthlandREC2),1)
+for (i in 1:nrow(SouthlandREC2)){
+  Reach[[i]]<-which(SouthlandREC2$TO_NODE==SouthlandREC2$FROM_NODE[i])    #Note - to avoid some issues that i encoutered, I would actually make Reach as the ID names rather than just the indexing if i did it again!
+  LReach[i]<-length(Reach[[i]])
+}
+
+#Go through the reaches from top to bottom and generate "IDSORT"  which gives the order that they shold be processed.
+#This takes some time (an hour?!). This is needed to work the downstream aggregation function above
+#~~~~~~~~~~~~~~~~~Making IDSort~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+IDRiver < -seq(1,nrow(SouthlandREC2),1)            
+IDSort  <- IDRiver*0 
+num     <- 1  #First assign a "1" to the most upstream reaches
+IDSort[LReach==0]<-num
+in1<-sum(IDSort)  
+num<-num+1 #Assign the order (IDSort) that the reaches must be calculated in
+index  <-which(IDSort==0 & SouthlandREC2$StreamOrde <= num)
+index2 <-which(IDSort!=0) #These are the most upstream catchments
+
+while (nrow(SouthlandREC2)-in1>0) {
+  ind<-seq(1,length(index),1)
+  Lmatch<-unlist(lapply(ind,function(x) length(which(!is.na(match(Reach[[index[x]]],index2))==T))))
+  i2<-which(LReach[index]==Lmatch)
+  IDSort[index[i2]]<-num
+  in1<-in1+length(i2)   
+  num<-num+1
+  index<-which(IDSort == 0 & SouthlandREC2$StreamOrde <= num)
+  index2<-which(IDSort != 0) #These are the most upstream catchments    
+  print(in1/nrow(SouthlandREC2)*100)
+} 
+
+#Use the downstream aggregation function to get the upstream average elevation for each reach
+
+# accumulate area averaged elevation
+SouthlandREC2$upstElev <- DstAggr_AreaAvg(IDSort=IDSort, Aggrvar=SouthlandREC2[, "ElevAve"],segArea = SouthlandREC2$CATAREA,upstArea = SouthlandREC2$CUM_AREA, Reach=Reach, IDnew=seq(1, length(SouthlandREC2$nzsegment),1))
+
+#Accumulate area to test
+#SouthlandREC2$AccumArea <- DstAggr_OneVar(IDSort=IDSort, Aggrvar=SouthlandREC2[, "CATAREA"], Reach=Reach, IDnew=seq(1, length(SouthlandREC2$nzsegment),1))
+
+#Save the table for later 
+write.table(SouthlandREC2,file.path(DataDirectory,"SouthlandREC2_TK.csv"),row.names = FALSE, quote = FALSE, sep=",")
+
+```
+
+
+The next step is to establish the elevation threshold that provides the best match for classification to the REC1 source of flow attribute
+Externally an REC1 to REC2 allignment has been carried out by intersecting (in QGIS, ignoring the polygons with topological errors) their respective watershed files
+The REC1 to REC2 is a many to many relationship, but it is necesary to develop a 1 to 1 relationship. 
+This is done in two steps.
+1/ For each REC2 ID, select the REC1 ID that intersects with the largest area. This step appears to be missing from Caroline's report.
+2/ For each REC1 ID, select the REC2 ID with the largest upstream area.
+The REC2 attributes can then be joined to the REC1 ID's.
+```{r}
+#Pare down the REC1 to REC2 data (many to many) based on the area of intersection to give a REC2 to REC1 1 to many relationship
+REC2toManyREC1<-ddply(REC1ToREC2All,.(nzsegment),summarise,NZREACH=NZREACH[which.max(Area)])
+
+#Add upstream area attribute to the REC1-to-REC2 table
+REC2toManyREC1PlusCumArea<-join(REC2toManyREC1,SouthlandREC2[,c("nzsegment","CUM_AREA")])
+
+#Select just the largest REC2 for each REC1 to give a 1 to 1 relationship
+REC1toREC2<-ddply(REC2toManyREC1PlusCumArea,.(NZREACH),summarise,nzsegment=nzsegment[which.max(CUM_AREA)])
+
+#Tack on all the other REC2 attributes, and the REC1 attributes that will be needed
+REC1WithREC2 <- join(REC1toREC2,SouthlandREC2[,c("nzsegment","StreamOrde","CATAREA","CUM_AREA","upstElev")],type="left")
+REC1WithREC2 <- left_join(REC1WithREC2, SouthlandREC1[,c("NZReach","SRC_OF_FLW")],by=c("NZREACH"="NZReach"))
+
+#Output the REC1ToREC1 table but only for source of flow of lowland, hill and mountain
+
+REC1WithREC2Output<-REC1WithREC2[REC1WithREC2$SRC_OF_FLW %in% c("L","H","M"),c("NZREACH","StreamOrde","SRC_OF_FLW","CATAREA","CUM_AREA","nzsegment","upstElev")]
+write.csv(REC1WithREC2Output,file=file.path(DataDirectory,"REC2toREC1.csv"), row.names = FALSE)
+```
+
+
+Externally (in REC1and REC2.xlsx) the "REC2toREC1.csv" data has been used to develop:
+a relationship between the upstream average elevation threshold needed to allocate the Lowland class and log10 of upstream catchment area.
+An upstream average elevation threshold for the mountain class.
+This was achieved by miniising the difference between the total area of the REC1 "L","H",and "M" Source-of-Flow attributes of each REC2 segment (assigned using the REC1 to REC2 linkage derived above) and the area based on the thresholded upstream area-averaged elevation. This was done for each stream order, then a polynomial relationship found.
+This can be used on the REC2 data to generate lowland classes
+```{r}
+#REC3$LCutoff<-(-1.2141*(log10(REC3$upstArea))^3 + 33.011*(log10(REC3$upstArea))^2 - 261.91*(log10(REC3$upstArea)) + 1045.4) #Original for REC3
+
+SouthlandREC2$LCutoff<-(-1.2709*(log10(SouthlandREC2$CUM_AREA))^3 + 38.021*(log10(SouthlandREC2$CUM_AREA))^2 - 327.11*(log10(SouthlandREC2$CUM_AREA)) + 1264.7) #Original for REC3 
+SouthlandREC2$SRC_OF_FLW_new<-"L"
+SouthlandREC2$SRC_OF_FLW_new[SouthlandREC2$CatchElev>SouthlandREC2$LCutoff]<-"H"
+SouthlandREC2$SRC_OF_FLW_new[SouthlandREC2$ElevAve>980]<-"M"           #The REC3 threshold was 990.
+
+write.table(SouthlandREC2,file.path(DataDirectory,"SouthlandREC2_TK.csv"),row.names = FALSE, quote = FALSE, sep=",")
+```
+
+
