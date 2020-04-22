@@ -5,9 +5,8 @@ library(raster)
 library(rgdal)
 library(grDevices)
 
-#r_colors <- rgb(t(col2rgb(colors()) / 255))
-#names(r_colors) <- colors()
 MapData <- readRDS("Data/SpatialData.RDS")
+#map <- readRDS("Data/map.RDS")
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
@@ -30,10 +29,8 @@ ExtraSiteLabels <- lapply(seq(nrow(MapData$ExtraSites@data)), function(i) {
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
-  paste0("Rivermouth site: ",  
-         MapData$RiverMouthSites@data[i, "id"],'</br>',MapData$RiverMouthSites@data[i, "River"]) 
+  paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
 })
-
 
 #Setup the map
 map <- leaflet::leaflet() %>% 
@@ -53,7 +50,7 @@ map <- map %>%
               fillOpacity = 0,
               weight = 2,
               opacity = 1,
-              color = "white",
+              color = "grey",
               highlight = highlightOptions(
                 weight = 5,
                 color = "#666"),
@@ -72,42 +69,28 @@ map <- map %>%
               fillOpacity = 0,
               weight = 2,
               opacity = 1,
-              color = "white",
+              color = "grey",
               highlight = highlightOptions(
                 weight = 5,
                 color = "#666"),
               label = GroundwaterLabels,
               group="Groundwater Management Zones")
 
-#Add the Physiography raster
-Physpal <- colorFactor(rainbow(10), values(MapData$Physiography),
+#Add the Physiography raster Note that the palette has been set to match the Environment Southland usual colours for their physiography
+Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                        na.color = "transparent")
 map <- map %>%
-  addRasterImage(MapData$Physiography, colors = Physpal, opacity = 0.8, group = "Physiographic Zones") %>%  
+  addRasterImage(MapData$Physiography, colors = Physpal, opacity = 1, group = "Physiographic Zones") %>%  
   addLegend(pal = Physpal, 
             values = values(MapData$Physiography),
             title = "Physiography",
+            opacity = 1,
             labFormat  = labelFormat(
               transform = function(x) {
                 levels(MapData$Physiography)[[1]]$Physiography[which(levels(MapData$Physiography)[[1]]$ID == x)]
               }),
             layerId = "Physiography",
             group="Physiographic Zones")
-
-#Add the Water Plan Classification raster
-#WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
-#                     na.color = "transparent")
-# map <- map %>%
-#   addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
-#   addLegend(pal = WPpal, 
-#             values = values(MapData$WaterPlan),
-#             title = "Water Plan Classes",
-#             labFormat  = labelFormat(
-#               transform = function(x) {
-#                 levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
-#               }),
-#             layerId = "Water Plan Classess",
-#             group="Water Plan Classes")
 
 #Add the river network coloured by Water PLan Class
 WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
@@ -126,6 +109,7 @@ map <- map %>%
             layerId = "Water Plan Classess",
             group="Water Plan Classes")
 
+
 map <- map %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
@@ -135,8 +119,8 @@ map <- map %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("Measurement SItes","Lake Sites","Estuary Sites","River Mouth Sites","Subcatchment Sites"),
-            title = "Sites",
+  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("RWQ","Lake","Estuary","River Mouth","Subcatchment"),
+            title = "Assessment point<br>locations",
             opacity = 1) %>%
   
   addLayersControl(
@@ -147,6 +131,7 @@ map <- map %>%
   hideGroup(c("Major Catchments","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
+
 
 ui <- fluidPage(
   titlePanel("LWP"),
