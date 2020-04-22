@@ -119,11 +119,11 @@ REC2WaterPlan$QUALITY_ST <- droplevels(REC2WaterPlan$QUALITY_ST)
 
 names(REC2WaterPlan)[2] <- "WaterPlan"
 
-write.csv(REC2WaterPlan,file.path(DataDirectory,"REC1WaterPlan.csv"))
+write.csv(REC2WaterPlan,file.path(DataDirectory,"REC1WaterPlan.csv"),row.names = FALSE)
 
 REC2WaterPlan <- merge(SouthlandREC2[,c("nzsegment","nzreach_re")],REC2WaterPlan,by.x="nzreach_re",by.y="NZREACH",type="left")
 
-write.csv(REC2WaterPlan[,c("nzsegment","WaterPlan")],file.path(DataDirectory,"REC2WaterPlan.csv"))
+write.csv(REC2WaterPlan[,c("nzsegment","WaterPlan")],file.path(DataDirectory,"REC2WaterPlanV0.csv"),row.names=FALSE)
 
 list.files(DataDirectory,"^.*WaterPlan.csv",full.names = TRUE)
 ```
