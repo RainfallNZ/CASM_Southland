@@ -29,10 +29,10 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 
 #REC data is available from the MfE data service. See https://data.mfe.govt.nz/layer/51826-river-environment-classification-manawatu-2010/ and https://data.mfe.govt.nz/layer/51847-river-environment-classification-watershed-manawatu-2010/
 
-#REC_rivers <- "ES_REC2_Riverlines"
+REC_rivers <- "ES_REC2_Riverlines"
 
 #Or an REC3 version
-REC_rivers <- "ES_REC3_Riverlines"
+#REC_rivers <- "ES_REC3_Riverlines"
 
 #REC_Catchments <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
 
@@ -60,7 +60,9 @@ WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
 
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 
-NZsegmentToWaterPlanClassLookUpTableFile <-  "NZsegmentToWaterPlan.csv"
+#NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
+NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
+
 
 ```
 
@@ -83,11 +85,11 @@ CompleteDomain = SpatialPolygons(list(Polygons(outerRings,ID=1)))
 crs(CompleteDomain) <- crs(MajorCatchments)
 
 #Load the lookup table between REC2 nzsegment and Environment Southland's Water Plan class
-NZsegmentToWaterPlanClassLookUpTable <- read.table(file.path(DataDirectory,NZsegmentToWaterPlanClassLookUpTableFile), sep=",", stringsAsFactors = FALSE,header = TRUE)
+NZsegmentToWaterPlanClassLookUpTable <- read.table(NZsegmentToWaterPlanClassLookUpTableFile, sep=",", stringsAsFactors = FALSE,header = TRUE)
 
 #If the lookup table is not available then it can be recreated using the code immediately below
 # {
-# #Read in the REC riverlines that have bee converted to points
+# #Read in the REC riverlines that have been converted to points
 # REC2RiverLinePOints <- readOGR(dsn = GISDataDirectory,layer = "ES_REC2_Riverline_Vertices_WaterPlan")
 # 
 # REC2RiverlinePointData <- REC2RiverLinePOints@data
@@ -108,17 +110,17 @@ RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
 
 RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
 
-#For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
-#nzseg_v3 to nzsegment
-names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "nzseg_v3")] <- "nzsegment"
-#ups_length to headw_dist
-names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "ups_length")] <- "headw_dist"
+# #For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
+# #nzseg_v3 to nzsegment
+# names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "nzseg_v3")] <- "nzsegment"
+# #ups_length to headw_dist
+# names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "ups_length")] <- "headw_dist"
 
-#For the REC3 network, need to make some columns numeric
-RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")] <- lapply(RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")],as.numeric)
+# #For the REC3 network, need to make some columns numeric
+# RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")] <- lapply(RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")],as.numeric)
 
 ##Add the Environment Southland Water Plan Class to the REC2 data
-#RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$Name[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
+RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
 #REstrict it to just the major catchments of interest
 #RECReachNetwork <- gIntersection(RECReachNetwork,CompleteDomain,byid =TRUE)
@@ -412,11 +414,11 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 #RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
 
 #Just get the network needed for the map. For REC3, the headw_dist divisor is 2000, for RECV2 it is 200, so need to edit this.
-RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/1000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
-RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/1000)) #SCale the line width, with a minimum of 1 pixel
+RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/100 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
 
-RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlanC")]
-RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlanC)
+RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan")]
+RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
 RECForMaps <- ms_simplify(RECForMaps)
 
 MajorCatchments <- ms_simplify(MajorCatchments)
@@ -474,7 +476,7 @@ map <- map %>%
   fillOpacity = 0,
   weight = 2,
   opacity = 1,
-  color = "white",
+  color = "grey",
   highlight = highlightOptions(
     weight = 5,
     color = "#666"),
@@ -493,42 +495,28 @@ map <- map %>%
   fillOpacity = 0,
   weight = 2,
   opacity = 1,
-  color = "white",
+  color = "grey",
   highlight = highlightOptions(
     weight = 5,
     color = "#666"),
   label = GroundwaterLabels,
   group="Groundwater Management Zones")
 
-#Add the Physiography raster
-Physpal <- colorFactor(rainbow(10), values(MapData$Physiography),
+#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in 
+Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                     na.color = "transparent")
 map <- map %>%
-  addRasterImage(MapData$Physiography, colors = Physpal, opacity = 0.8, group = "Physiographic Zones") %>%  
+  addRasterImage(MapData$Physiography, colors = Physpal, opacity = 1, group = "Physiographic Zones") %>%  
   addLegend(pal = Physpal, 
             values = values(MapData$Physiography),
             title = "Physiography",
+            opacity = 1,
             labFormat  = labelFormat(
             transform = function(x) {
               levels(MapData$Physiography)[[1]]$Physiography[which(levels(MapData$Physiography)[[1]]$ID == x)]
             }),
             layerId = "Physiography",
             group="Physiographic Zones")
-
-# #Add the Water Plan Classification raster
-# WPpal <- colorFactor("Paired", values(MapData$WaterPlan),
-#                     na.color = "transparent")
-# map <- map %>%
-#   addRasterImage(MapData$WaterPlan, colors = WPpal, opacity = 0.8, group = "Water Plan Classes") %>%  
-#   addLegend(pal = WPpal, 
-#             values = values(MapData$WaterPlan),
-#             title = "Water Plan Classes",
-#             labFormat  = labelFormat(
-#             transform = function(x) {
-#               levels(MapData$WaterPlan)[[1]]$WaterPlanClass[which(levels(MapData$WaterPlan)[[1]]$ID == x)]
-#             }),
-#             layerId = "Water Plan Classess",
-#             group="Water Plan Classes")
 
 #Add the river network coloured by Water PLan Class
 WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
@@ -557,8 +545,8 @@ map <- map %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("Measurement SItes","Lake Sites","Estuary Sites","River Mouth Sites","Subcatchment Sites"),
-            title = "Sites",
+  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("RWQ","Lake","Estuary","River Mouth","Subcatchment"),
+            title = "Assessment point<br>locations",
             opacity = 1) %>%
   
   addLayersControl(
@@ -572,6 +560,7 @@ map
 
 #save the mapdata as an R file so that it can be used in an RShinyApp
 saveRDS(MapData,file.path(ProjectDirectory,"/R/CASM_Southland/ShinyApp/Data","SpatialData.RDS"))
+saveRDS(map,file.path(ProjectDirectory,"/R/CASM_Southland/ShinyApp/Data","map.RDS"))
 ```
 
 
