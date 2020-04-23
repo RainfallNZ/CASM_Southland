@@ -227,43 +227,6 @@ GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 
 
 
-***Need to do the full processing from REC3 to REC2 here
-rasterize REC3
-
-Can't get this to work efficiently yet !! buffer on majority of nearest neighbor seems to take too long.
-sample REC2 points from raster
-agregate points on nzsegment and majority of the REC3 attribute
-
-```{r}
-#Load the high resolution Water Plan Class raster
-# WaterPlanRasterHiRes <- raster(file.path(GISDataDirectory,"WaterPlan_8m.tif"))
-# 
-# Mode <- function(x) {
-#   ux <- unique(na.omit(x))
-#   ux[which.max(tabulate(match(x, ux)))]
-# }
-# 
-# fill.na <- function(x, i=5) {
-#   if( is.na(x)[i] ) {
-#     return( Mode(x))
-#   } else {
-#     return( x[i] )
-#   }
-# }
-# library(tictoc)
-# 
-# {
-#   tic()
-# 
-# WaterPlanRasterHiResNAFilled <- focal(WaterPlanRasterHiRes, w = matrix(1,3,3), fun= fill.na, pad=TRUE, na.rm=FALSE)
-# writeRaster(WaterPlanRasterHiResNAFilled,file.path(GISDataDirectory,"WaterPlanRasterNAFilled.tiff"))
-# toc()
-# }
-
-
-```
-
-
 Not sure if the following is needed anymore.
 Get the "nzsegment" attributes of the lowest reach in each of the major catchments
 ```{r}
@@ -502,7 +465,7 @@ map <- map %>%
   label = GroundwaterLabels,
   group="Groundwater Management Zones")
 
-#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in 
+#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7
 Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                     na.color = "transparent")
 map <- map %>%
@@ -518,8 +481,8 @@ map <- map %>%
             layerId = "Physiography",
             group="Physiographic Zones")
 
-#Add the river network coloured by Water PLan Class
-WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
+#Add the river network coloured by Water Plan Class. Note the custom palette set to match the Environment Southland choice of colours on their GIS page: http://gis.es.govt.nz/index.aspx?app=water-and-land
+WPpal2 <- colorFactor(palette=c("#a4d1a4","#ffc34d","#ffff9e","#dcb496","#ff9ee9","#ff7f7f","#68a84d"), levels <- levels(MapData$RiverNetwork$WaterPlan),
                     na.color = "transparent")
 
 map <- map %>%

@@ -32,6 +32,7 @@ RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function
   paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
 })
 
+
 #Setup the map
 map <- leaflet::leaflet() %>% 
   leaflet::addProviderTiles(providers$OpenStreetMap) %>%
@@ -76,7 +77,7 @@ map <- map %>%
               label = GroundwaterLabels,
               group="Groundwater Management Zones")
 
-#Add the Physiography raster Note that the palette has been set to match the Environment Southland usual colours for their physiography
+#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in 
 Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                        na.color = "transparent")
 map <- map %>%
@@ -93,7 +94,9 @@ map <- map %>%
             group="Physiographic Zones")
 
 #Add the river network coloured by Water PLan Class
-WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
+#WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
+#                    na.color = "transparent")
+WPpal2 <- colorFactor(palette=c("#a4d1a4","#ffc34d","#ffff9e","#dcb496","#ff9ee9","#ff7f7f","#68a84d"), levels <- levels(MapData$RiverNetwork$WaterPlan),
                       na.color = "transparent")
 
 map <- map %>%
