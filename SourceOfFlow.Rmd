@@ -35,7 +35,8 @@ if (!require(tidyr)) install.packages("tidyr"); library(tidyr)                #u
 
 Some useful functions
 ```{r}
-
+#These are slight variations aggregation functions commonly used by LWP. I think the difference was required because I misinterpreted the IDnew parameter to the functions.
+#These functions requires preparation of an IDSort vector, and a Reach vector.
 #
 # Downstream Aggregation of a single variable
 #
@@ -62,8 +63,7 @@ DstAggr_OneVar=function(IDSort=NULL,Aggrvar=NULL,Reach=Reach,IDnew=NULL){
 ######################################################################################
 #  Downstream Aggregation with area weighting (gives UPST average)                   #
 ######################################################################################
-#This is a slight variation on a disaggregation function commonly used by LWP. I think the difference was required because I misinterpreted the IDnew parameter to the function.
-#This function requires preparation of an IDSort vector, and a Reach vector.
+
 DstAggr_AreaAvg=function(IDSort=NULL,Aggrvar=NULL,segArea=NULL,upstArea=NULL,Reach=Reach,IDnew=NULL){
   
   val<-sort(unique(IDSort))                                 #Determines the order to do the calculations
@@ -121,6 +121,9 @@ REC2LakesCorrectedtoREC1File <- file.path(DataDirectory, "REC2dstLakesMatchedtoR
 
 #File with Water Plan classes derived by using the REC2 to REC1 reach linkage
 REC2WaterPlanDerivedDirectlyFromREC1 <- file.path(DataDirectory,"REC2WaterPlanV0.csv")
+
+#File with REC2 riverline vertices and associated REC1 Natural 30 m raster values
+REC2NaturalRiverVerticesFile <- file.path(DataDirectory,"REC2RiverlineVerticesInNaturalArea.csv")
 ```
 
 
@@ -376,13 +379,33 @@ This was repeated in REC1, and the two areas were found to be the same, though R
 The REC2 watersheds were used to sample the REC1 Natural raster, using the majority of cells in a watershed. (Using Zonal statistics tool)
 This class was added to the SouthlandREC2 data
 ```{r}
-SouthlandREC2 <- join(SouthlandREC2,REC2WaterSheds@data[,c("nzsegment","Naturalmaj")],type="left")
-#rename the "Naturalmaj" column to "Natural"
-names(SouthlandREC2)[which(names(SouthlandREC2) == "Naturalmaj")] <- "Natural"
-
-#Save it for later
+# SouthlandREC2 <- join(SouthlandREC2,REC2WaterSheds@data[,c("nzsegment","Naturalmaj")],type="left")
+# #rename the "Naturalmaj" column to "Natural"
+# names(SouthlandREC2)[which(names(SouthlandREC2) == "Naturalmaj")] <- "Natural"
+# 
+# #Save it for later
+# write.table(SouthlandREC2,file.path(DataDirectory,"SouthlandREC2_TK.csv"),row.names = FALSE, quote = FALSE, sep=",")
+```
+Alternative Natural determination.
+The first approach led to errors where river reaches flowed close by natural areas were getting classed as Natural when really it was supposed to just be the sub-catchments. This is particularly noticeable with the Mataura.
+To get around this, instead of allocating the class based on the mode of the class within each reaches watershed, the class was based on the mode of the class at each of the reaches vertices.
+QGIS pre-processing
+The vertices were created from the REC2 riverlines shapefile
+The REC1 Natural 30m raster was sampled at the vertices.
+The attributes "nzsegment" and "Natural" were exported to a csv file called "REC2RiverlineVerticesInNaturalArea.csv" in the project's Data directory. The "Natural" attribute was a "1" is natual, empty otherwise.
+```{r}
+REC2NaturalVertices <- read.table(REC2NaturalRiverVerticesFile,sep=",",header=TRUE)
+REC2NaturalVertices$Natural[is.na(REC2NaturalVertices$Natural)] <- 0
+#For each nzsegment, find whether or not the majority of its vertices are classed as natural
+#Aggregate on NZSegment, returning the majority of Natural
+REC2ToNaturalLUT <- aggregate(REC2NaturalVertices$Natural,list(REC2NaturalVertices$nzsegment),FUN= modal)
+names(REC2ToNaturalLUT) <- c("nzsegment","Natural")
+#Use this look up table to update the "Natural" class in the SouthlandREC2 data frame
+SouthlandREC2$Natural <- REC2ToNaturalLUT$Natural[match(SouthlandREC2$nzsegment,REC2ToNaturalLUT$nzsegment)]
 write.table(SouthlandREC2,file.path(DataDirectory,"SouthlandREC2_TK.csv"),row.names = FALSE, quote = FALSE, sep=",")
 ```
+
+
 
 
 Use the REC2 source of flow, GEOLOGY, Natural and Lakes data created using the methods of Fraser (2019) to update the Environment Southland Water Plan classes that were determined through a direct translation from REC1 using the REC2 "NZREACH" attribute. 
