@@ -139,10 +139,7 @@ load(REC1UtilityFile)   #This provides the REC1Utility data frame
 SouthlandREC1 <- REC1Utility[REC1Utility$Region == "S",]
 rm(REC1Utility)
 
-# load(REC2UtilityFile)   #This provides the REC2Utility data frame
-# #Cut it down to Southland
-# SouthlandREC2Utility <- REC1Utility[REC2Utility$Region == "S",]
-# rm(REC2Utility)
+
 
 #Load the REC2 Watersheds polygon shape file
 REC2Watersheds <- readOGR(dsn =file.path(GISDirectory,REC2WaterShedsFile),
