@@ -23,9 +23,9 @@ LakeSiteLabels <- lapply(seq(nrow(MapData$LakeSites@data)), function(i) {
          MapData$LakeSites@data[i, "Lake_Name"]) 
 })
 
-ExtraSiteLabels <- lapply(seq(nrow(MapData$ExtraSites@data)), function(i) {
+SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
   paste0("Subcatchment site: ",  
-         MapData$ExtraSites@data[i, "id"],'</br>',MapData$ExtraSites@data[i, "Reason"]) 
+         MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"]) 
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
@@ -77,7 +77,7 @@ map <- map %>%
               label = GroundwaterLabels,
               group="Groundwater Management Zones")
 
-#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in 
+#Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7
 Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                        na.color = "transparent")
 map <- map %>%
@@ -93,9 +93,7 @@ map <- map %>%
             layerId = "Physiography",
             group="Physiographic Zones")
 
-#Add the river network coloured by Water PLan Class
-#WPpal2 <- colorFactor("Dark2", MapData$RiverNetwork$WaterPlan,
-#                    na.color = "transparent")
+#Add the river network coloured by Water Plan Class. Note the custom palette set to match the Environment Southland choice of colours on their GIS page: http://gis.es.govt.nz/index.aspx?app=water-and-land
 WPpal2 <- colorFactor(palette=c("#a4d1a4","#ffc34d","#ffff9e","#dcb496","#ff9ee9","#ff7f7f","#68a84d"), levels <- levels(MapData$RiverNetwork$WaterPlan),
                       na.color = "transparent")
 
@@ -118,7 +116,7 @@ map <- map %>%
   addCircleMarkers(data = MapData$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$EstuarySites, color = "turquoise", fillOpacity = 0.5,label = lapply(EstuarySiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
-  addCircleMarkers(data = MapData$ExtraSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(ExtraSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
