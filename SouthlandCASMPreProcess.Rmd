@@ -6,6 +6,8 @@ output: html_notebook
 load some libraries
 ```{r}
 if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+if (!require(plyr)) install.packages("plyr"); library(plyr)                #used for the join function
+if (!require(knitr)) install.packages("knitr"); library(knitr)                #used to make nice looking tables
 if (!require(rgeos)) install.packages("rgeos"); library(rgeos)                #used for spatial processing
 if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
 if (!require(leaflet)) install.packages("leaflet"); library(leaflet)                #used for spatial processing
@@ -44,6 +46,8 @@ WaterQualityStationFile <- "WaterQualitySites" #An ESRI Point shape file
 
 LakeSiteFile <- "LakeSites"  #An ESRI Point shape file
 
+LakePolygonFile <- "NZLRIClip_Lakes" #An ESRI polygon shape file
+
 EstuarySiteFile <- "Estuaries.csv"
 
 ExtraCASMNodeSiteFile <- "ExtraCASMNodes"  #An ESRI Point Shape File
@@ -63,6 +67,8 @@ WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassifi
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 
+REC2UtilityFile <- file.path(DataDirectory,"REC2Utility.rdata")  #This contains a dataframe called REC2Utility, which has a whole bunch of REC2 attributes, including river names
+
 
 ```
 
@@ -77,6 +83,8 @@ MajorCatchments <- spTransform(MajorCatchments,CRS("+init=epsg:2193") )
 MajorCatchments <- MajorCatchments[-which(MajorCatchments$FactSheetZ %in% c("Fiordland","Stewart Island/ Rakiura Zone","Coastal Islands")),]
 #Ditch the NA catchemnts
 MajorCatchments <- MajorCatchments[!is.na(MajorCatchments$FactSheetZ),]
+MajorCatchments <- ms_simplify(MajorCatchments)
+projection(MajorCatchments) <- CRS("+init=epsg:2193")   #re-assign the NZTM specific projection as it gets dropped by the ms_simplify function.
 
 #Create a full domain (with help to clean it from https://stackoverflow.com/questions/12663263/dissolve-holes-in-polygon-in-r )
 CompleteDomain <- gUnaryUnion(MajorCatchments)
@@ -110,6 +118,15 @@ RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
 
 RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
 
+#Load the REC2 utility data with lots of useful stuff in it, including river names
+load(REC2UtilityFile)   #This provides the REC2Utility data frame
+#Cut it down to Southland
+SouthlandREC2Utility <- REC2Utility[REC2Utility$Region == "S",]
+rm(REC2Utility)
+
+
+
+
 # #For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
 # #nzseg_v3 to nzsegment
 # names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "nzseg_v3")] <- "nzsegment"
@@ -140,10 +157,19 @@ MeasurementSites <- spTransform(MeasurementSites,CRS("+init=epsg:2193") )
 #make sure the nzsegment attribute is numeric
 MeasurementSites$nzsegment <- as.numeric(MeasurementSites$nzsegment)
 
+#Remove the duplicate sites
+MeasurementSites <- MeasurementSites[!duplicated(MeasurementSites$nzsegment),]
+
 #Load lake sites of interest
 LakeSites <- readOGR(dsn =file.path(GISDataDirectory,LakeSiteFile),
                            layer = LakeSiteFile, stringsAsFactors = FALSE)
 LakeSites <- spTransform(LakeSites,CRS("+init=epsg:2193") )
+
+#Load the lake polygon layer
+Lakes <- readOGR(dsn =file.path(GISDataDirectory,LakePolygonFile),
+                           layer = LakePolygonFile, stringsAsFactors = FALSE)
+
+Lakes <- spTransform(Lakes,CRS("+init=epsg:2193") )
 
 #make sure the nzsegment attribute is numeric
 LakeSites$nzsegment <- as.numeric(LakeSites$nzsegment)
@@ -174,10 +200,12 @@ Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
   #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
   RasterBase <- raster(resolution = 250, ext = extent(MajorCatchments), crs = proj4string(MajorCatchments) )
   PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
-  #Crop to the COmplete domain, and then mask to the same
+  #Crop to the Complete domain, and then mask to the same
   PhysiographyRaster <- crop(PhysiographyRaster,extent(CompleteDomain))
   PhysiographyRaster <- mask(PhysiographyRaster, CompleteDomain)
   
+  #Note, for the next line I have had issues with repeated errors of "Error in x$.self$finalize() : attempt to apply non-function"
+  #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
   PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
   PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
   PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
@@ -224,7 +252,7 @@ GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 #OutletReachNames <- read.csv(file.path(DataDirectory,OutletReachNamesFile), stringsAsFactors = FALSE)
 
 ```
-
+Identify the lowest reach in each subcatchment for Strahler order 4 and up, and create a point at its lowest node
 
 
 Not sure if the following is needed anymore.
@@ -246,12 +274,44 @@ MajorCatchmentOuteltReaches <- lapply(seq_along(MajorCatchments$FactSheetZ), fun
 MajorCatchmentOuteltReachesDF <- do.call(rbind,MajorCatchmentOuteltReaches)
 ```
 
+Create a bunch of points that represent reaches of sub-catchment confluences over a certain strahler order.
+```{r}
+SubCatchmentConfluenceReaches <- ReachJunctionFinderByOrder(RECReachNetwork@data,OrderThreshold = 5)
+
+SubCatchmentConfluencePoints <- RECReachNetwork@data[RECReachNetwork@data$nzsegment %in% SubCatchmentConfluenceReaches,]
+SubCatchmentConfluencePoints <- SubCatchmentConfluencePoints[,c("nzsegment","downcoordX","downcoordY")]
+SubCatchmentConfluencePoints$Reason <- "Base of catchment"
+
+#Turn into a spatial dataframe
+SubCatchmentConfluencePointsSpatial <- SpatialPointsDataFrame(coords = SubCatchmentConfluencePoints[,c("downcoordX","downcoordY")],
+                                                              data = SubCatchmentConfluencePoints[,c("nzsegment","Reason")],
+                                                              proj4string = CRS("+init=epsg:2193"))
+
+#Remove any points that already exist in the Measurement site, Lake site, Estuary site, or Outlet sites
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[which(!SubCatchmentConfluencePointsSpatial$nzsegment %in% c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment,RiverMouthSites$nzsegment)),]
+
+#Remove any points that are terminal reaches as they have been manually selected in the "RiverMouthSites"
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!SubCatchmentConfluencePointsSpatial$nzsegment %in% SouthlandREC2Utility$nzsegment[SouthlandREC2Utility$isTerminal],]
+
+#Keep the points that are not within lakes
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[is.na(over(SubCatchmentConfluencePointsSpatial,Lakes)[,1]),]
+
+#Add any additional sites from the manually created "ExtraSites"
+SubCatchmentConfluencePointsSpatial <- bind(SubCatchmentConfluencePointsSpatial,ExtraSites[which(!ExtraSites$nzsegment %in% SubCatchmentConfluencePointsSpatial$nzsegment),c("nzsegment","Reason")])
+
+#Add the River names
+SubCatchmentConfluencePointsSpatial@data <- join(SubCatchmentConfluencePointsSpatial@data,SouthlandREC2Utility[,c("nzsegment","RiverName")],type="left")
+
+#Remove points not withon the overall domain
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!is.na(SubCatchmentConfluencePointsSpatial %over% CompleteDomain),]
+```
+
 
 From the load sites, point source sites, and water management subzones outlets, create the required network.
 !!This doesn't work with REC3!! as all the nzsegment values are REC2 values.
 ```{r}
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
-AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, ExtraSites$nzsegment, OutletReaches = RiverMouthSites$nzsegment)
+AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment)
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
@@ -259,6 +319,15 @@ CompleteNetwork <- as.numeric(CompleteNetwork)
 
 CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% CompleteNetwork,]
 ```
+
+Find out how many points are in each of the Water Plan Classes
+```{r}
+AllPointWaterPlan <- RECReachNetwork@data$WaterPlan[RECReachNetwork$nzsegment %in% AllPoints]
+kable(table(AllPointWaterPlan))
+
+```
+
+
 
 Then create a tributary table ready for CASM
 **** This needs an Outlet Reach Name lookup table to be manually prepared ****
@@ -377,20 +446,21 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 #RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$CUM_AREA)/10000)) #SCale the line width, with a minimum of 1 pixel
 
 #Just get the network needed for the map. For REC3, the headw_dist divisor is 2000, for RECV2 it is 200, so need to edit this.
-RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/100 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+#RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/100 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+RECForMaps <- RECReachNetwork[(RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
 RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
 
 RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan")]
 RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
 RECForMaps <- ms_simplify(RECForMaps)
 
-MajorCatchments <- ms_simplify(MajorCatchments)
+
 
 #Reproject the vector spatial data to the maps projection ready for plotting
 #Note that the raster data was reprojected when it was loaded.
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
-SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,ExtraSites=ExtraSites,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones)
+SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones)
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 MapData$Physiography <- PhysiographyRasterWGS84
@@ -411,9 +481,9 @@ LakeSiteLabels <- lapply(seq(nrow(MapData$LakeSites@data)), function(i) {
           MapData$LakeSites@data[i, "Lake_Name"]) 
 })
 
-ExtraSiteLabels <- lapply(seq(nrow(MapData$ExtraSites@data)), function(i) {
+SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
   paste0("Subcatchment site: ",  
-          MapData$ExtraSites@data[i, "id"],'</br>',MapData$ExtraSites@data[i, "Reason"]) 
+          MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"]) 
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
@@ -504,7 +574,7 @@ map <- map %>%
   addCircleMarkers(data = MapData$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$EstuarySites, color = "turquoise", fillOpacity = 0.5,label = lapply(EstuarySiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
-  addCircleMarkers(data = MapData$ExtraSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(ExtraSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
