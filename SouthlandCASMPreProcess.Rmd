@@ -6,6 +6,7 @@ output: html_notebook
 load some libraries
 ```{r}
 if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+if (!require(ggplot2)) install.packages("ggplot2"); library(ggplot2)                #used for plotting
 if (!require(plyr)) install.packages("plyr"); library(plyr)                #used for the join function
 if (!require(knitr)) install.packages("knitr"); library(knitr)                #used to make nice looking tables
 if (!require(rgeos)) install.packages("rgeos"); library(rgeos)                #used for spatial processing
@@ -69,6 +70,7 @@ NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterP
 
 REC2UtilityFile <- file.path(DataDirectory,"REC2Utility.rdata")  #This contains a dataframe called REC2Utility, which has a whole bunch of REC2 attributes, including river names
 
+REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdata")  #This contains a dataframe called REC2, which has a whole bunch of additional REC2 attributes, 
 
 ```
 
@@ -124,7 +126,19 @@ load(REC2UtilityFile)   #This provides the REC2Utility data frame
 SouthlandREC2Utility <- REC2Utility[REC2Utility$Region == "S",]
 rm(REC2Utility)
 
+#Load the REC2 "Extra" utility data with lots more useful stuff in it, including upstream high producing exotic pasture (LCDB# Class 40)
+load(REC2UtilityExtraFile)   #This provides a data frame called REC2
+#Cut it down to Southland, and just the column of interest
+SouthlandREC2ExtraUtility <- REC2[REC2$nzsegment %in% SouthlandREC2Utility$nzsegment,c("nzsegment","us_LCDB3_40")]
+rm(REC2)
+#rename the column to "UpstreamHighProducingExoticPasture"
+names(SouthlandREC2ExtraUtility)[2] <- "UpstreamHighProducingExoticPasture"
 
+SouthlandREC2Utility <- join(SouthlandREC2Utility,SouthlandREC2ExtraUtility, type="left")
+#Calculate percentage upstream exotic pasture
+SouthlandREC2Utility$pctExoticPasture <- SouthlandREC2Utility$UpstreamHighProducingExoticPasture / SouthlandREC2Utility$catAreaKM2 /10000
+#Fix the five aberrant values 
+SouthlandREC2Utility$pctExoticPasture[SouthlandREC2Utility$pctExoticPasture > 100] <- 100
 
 
 # #For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
@@ -189,9 +203,33 @@ EstuarySites <- read.table(file.path(DataDirectory,EstuarySiteFile),header=TRUE,
 #Create a spatial file from it
 EstuarySitesSpatial <- SpatialPointsDataFrame(coords = EstuarySites[,c("NZTME","NZTMN")],data = EstuarySites, proj4string = CRS("+init=epsg:2193"))
 
+#Load the Environment Southland Water Plan Classification spatial data
+#WaterPlanClassification <- readOGR(dsn = file.path(GISDataDirectory,WaterPlanClassificationFile), layer =WaterPlanClassificationFile, stringsAsFactors = FALSE)
+#WaterPlanClassification <- spTransform(WaterPlanClassification,CRS("+init=epsg:2193") )
+
+# #Load the Water Plan classification raster data
+#   WaterPlanRaster <- raster(WaterPlanClassificationRasterFile)
+#   
+#   #reproject to WGS84 for mapping
+#   WaterPlanRasterWGS84 <- projectRaster(WaterPlanRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+#   WaterPlanRasterWGS84 <- ratify(WaterPlanRasterWGS84)
+#   WaterPlanClassRAT <- levels(WaterPlanRasterWGS84)[[1]]
+#   WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
+#   levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
+
+  #Load the Groundwater Management Zone data
+GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
+                           layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
+GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
+
+```
 
 
-#Load the Physiographic Zones data
+********************************
+Load the Physiographic Zones data. This frequently has issues! Best to run it line by line
+*******************************
+
+```{r}
 Physiography <- readOGR(dsn =file.path(GISDataDirectory,PhysiographicDataFile),
                            layer = PhysiographicDataFile)
 Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
@@ -212,44 +250,7 @@ Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
   PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
   levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
 
-  #Load the Environment Southland Water Plan Classification spatial data
-#WaterPlanClassification <- readOGR(dsn = file.path(GISDataDirectory,WaterPlanClassificationFile), layer =WaterPlanClassificationFile, stringsAsFactors = FALSE)
-#WaterPlanClassification <- spTransform(WaterPlanClassification,CRS("+init=epsg:2193") )
-  
 
-
-
-
-# #Load the Water Plan classification raster data
-#   WaterPlanRaster <- raster(WaterPlanClassificationRasterFile)
-#   
-#   #reproject to WGS84 for mapping
-#   WaterPlanRasterWGS84 <- projectRaster(WaterPlanRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
-#   WaterPlanRasterWGS84 <- ratify(WaterPlanRasterWGS84)
-#   WaterPlanClassRAT <- levels(WaterPlanRasterWGS84)[[1]]
-#   WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
-#   levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
-
-
-
-  
-  #Load the Groundwater Management Zone data
-GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
-                           layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
-GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
-
-
-#Load the point source sites
-#PointSourceSites <- read.csv(file.path(DataDirectory,"PointSourcesSummaryPC2_YE2012_04.csv"))
-
-#Create a spatial points object set to NZTM
-#PointSourceSitesSpatial <-SpatialPointsDataFrame(coords = PointSourceSites[,c("NZTM.X","NZTM.Y")],
-#                                               data = PointSourceSites[,1:5],
-#                                               proj4string = CRS("+init=epsg:2193"))
-
-
-#Load the network outlet reach names lookup table. This has been manually prepared, and may need editing if the network changes to include outlet reaches not yet included in this file
-#OutletReachNames <- read.csv(file.path(DataDirectory,OutletReachNamesFile), stringsAsFactors = FALSE)
 
 ```
 Identify the lowest reach in each subcatchment for Strahler order 4 and up, and create a point at its lowest node
@@ -320,11 +321,29 @@ CompleteNetwork <- as.numeric(CompleteNetwork)
 CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% CompleteNetwork,]
 ```
 
-Find out how many points are in each of the Water Plan Classes
-```{r}
+Get some descriptive statistics of how well the points represent the important land uses
+Find out how many points are in each of the Water Plan Classes.
+and plot a histogram for each catchment showing the % pasture coverage
+```{r, fig.width=12, fig.height = 12}
 AllPointWaterPlan <- RECReachNetwork@data$WaterPlan[RECReachNetwork$nzsegment %in% AllPoints]
-kable(table(AllPointWaterPlan))
+#kable(table(AllPointWaterPlan))
 
+#Find which major catchment each point is in
+AllPointReaches <- RECReachNetwork[RECReachNetwork$nzsegment %in% AllPoints,]
+
+AllPointCatchments <- AllPointReaches %over% MajorCatchments
+names(AllPointCatchments) <- "Catchments"
+#There are a few in New River Estuary and Invercargill area that are outside the Invercargill FMU boundary, but only because the boundary doesn't include the estuary
+AllPointCatchments$Catchments[which(is.na(AllPointCatchments))] <- "Oreti & Invercargill Catchments"
+
+AllPointspctExoticPasture <- SouthlandREC2Utility$pctExoticPasture[SouthlandREC2Utility$nzsegment %in% AllPoints]
+hist(AllPointspctExoticPasture,xlab = "% of upstream catchment in high producing exotic grassland",ylab ="Number of points",main="")
+GraphData <- data.frame(pctExoticPasture = AllPointspctExoticPasture, Catchment = AllPointCatchments)
+#ggplot(GraphData, aes(x=pctExoticPasture,color = Catchments, fill = Catchments))+ geom_histogram(bins=10,position="dodge")
+
+ggplot(GraphData, aes(pctExoticPasture)) + geom_histogram(bins=10,colour="grey",fill="white")
+
+ggplot(GraphData, aes(x=pctExoticPasture))+ geom_histogram(bins=10,colour="grey",fill="white") + facet_wrap(. ~Catchments,ncol=2)
 ```
 
 
