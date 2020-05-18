@@ -31,47 +31,49 @@ DataDirectory     <- file.path(ProjectDirectory, "Data")
 #Set the GIS directory
 GISDataDirectory  <- file.path(DataDirectory,"GIS")
 
+#Set some R data filenames from the LWP data store
+REC_MeanFlowFile <- file.path(DataDirectory,"REC2MeanFlow.RData")  #This is an RData file
+REC2UtilityFile <- file.path(DataDirectory,"REC2Utility.rdata")  #This contains a dataframe called REC2Utility, which has a whole bunch of REC2 attributes, including river names
+REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdata")  #This contains a dataframe called REC2, which has a whole bunch of additional REC2 attributes, 
+
+#Set the names of the shapefile spatial data in ESRI format
 #REC data is available from the MfE data service. See https://data.mfe.govt.nz/layer/51826-river-environment-classification-manawatu-2010/ and https://data.mfe.govt.nz/layer/51847-river-environment-classification-watershed-manawatu-2010/
 
-REC_rivers <- "ES_REC2_Riverlines"
-
+REC_rivers              <- "ES_REC2_Riverlines"
 #Or an REC3 version
-#REC_rivers <- "ES_REC3_Riverlines"
+#REC_rivers             <- "ES_REC3_Riverlines"
+#REC_Catchments         <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
 
-#REC_Catchments <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
+WaterQualityStationFile <- "WaterQualitySites" #A Point shape file
+LakeSiteFile            <- "LakeSites"  #A Point shape file
+LakePolygonFile         <- "NZLRIClip_Lakes" #A polygon shape file
 
-REC_MeanFlowFile <- file.path(DataDirectory,"REC2MeanFlow.RData")  #This is an RData file
+ExtraCASMNodeSiteFile   <- "ExtraCASMNodes"  #A Point Shape File
+RiverOutletsFile        <- "RiverMouthSites" #A Point Shape File
 
-#OutletReachNamesFile <- "OutletReachNames.csv"
+MajorCatchmentsFile     <- "FactsheetZoneAreas"   #A polygon shapefile
+GroundwaterZonesFile    <- "Environment_Southland_Groundwater_Management_Zones_RWP_2010" #AI polygon shapefile
+PhysiographicDataFile   <- "Environment_Southland_Physiographic_Zones" #A polygon shapefile
+WaterPlanClassificationFile <- "WaterPlanClassification" #A Shape file
 
-WaterQualityStationFile <- "WaterQualitySites" #An ESRI Point shape file
+LanduseShapeFile        <- file.path(GISDataDirectory,"LanduseLayers/LandUse2017/LandUse2017.shp")
+SoilDrainageShapeFile   <- file.path(GISDataDirectory,"LanduseLayers/Soil_drainage/Soil_drainage.shp")
+SlopeClassShapeFile     <- file.path(GISDataDirectory,"LanduseLayers/LRI_Slope_Layer/LRI_Slope_Layer.shp")
+PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/PrecipitationClass_withIrri/PrecipitationClass_withIrri.shp")
 
-LakeSiteFile <- "LakeSites"  #An ESRI Point shape file
 
-LakePolygonFile <- "NZLRIClip_Lakes" #An ESRI polygon shape file
-
-EstuarySiteFile <- "Estuaries.csv"
-
-ExtraCASMNodeSiteFile <- "ExtraCASMNodes"  #An ESRI Point Shape File
-
-RiverOutletsFile <- "RiverMouthSites" #An ESRI Point Shape File
-
-MajorCatchmentsFile <- "FactsheetZoneAreas"   #An ESRI polygon shapefile
-
-GroundwaterZonesFile <- "Environment_Southland_Groundwater_Management_Zones_RWP_2010" #An ESRI polygon shapefile
-
-PhysiographicDataFile <- "Environment_Southland_Physiographic_Zones" #An ESRI polygon shapefile
-
-WaterPlanClassificationFile <- "WaterPlanClassification" #An ESRI Shape file
-
+#Set the name of raster file data in geoTiff format
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 
+#Set the names of some text tables in csv format
+#OutletReachNamesFile   <- "OutletReachNames.csv"
+EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 
-REC2UtilityFile <- file.path(DataDirectory,"REC2Utility.rdata")  #This contains a dataframe called REC2Utility, which has a whole bunch of REC2 attributes, including river names
+#Set the names of some Excel workbooks
+LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
 
-REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdata")  #This contains a dataframe called REC2, which has a whole bunch of additional REC2 attributes, 
 
 ```
 
@@ -222,6 +224,8 @@ EstuarySitesSpatial <- SpatialPointsDataFrame(coords = EstuarySites[,c("NZTME","
 GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
 GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
+
+LeachRateRaster <- 
 
 ```
 
