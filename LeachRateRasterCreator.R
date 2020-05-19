@@ -1,4 +1,4 @@
-#' A function to combine spatial data sources of land use, soil drainage, slope and precipiation/irrigation, and uses them to lookup leach rates based on an Environment Southland designation. The processing is carried out at a 250 m x 250 m grid scale.
+#' A function to combine spatial data sources of land use, soil drainage, slope and precipiation/irrigation, and uses them to lookup leach rates based on an Environment Southland designation.
 #'
 #'This function generates a raster object of leach rates
 #'
@@ -7,6 +7,7 @@
 #'@param SlopeClassData A spatial data file (in ESRI polygon shapefile format) of the slope classification, as provided by Environment Southland.
 #'@param PrecipIrrig A spatial data file (in ESRI polygon shapefile format) of the precipiation/irrigation classification, as provided by Environment Southland.
 #'@param LeachRateData An Excel (.xlsx) file with 4 columns providing: "Land Use";"Landscape Category";"Soil drainage";"Slope Class";"Precip (><1000mm)". Then a further 4 columns: "N loss (mean)";"N loss (median)"; "P loss (mean)"; "P loss (median)"
+#'@param Resolution The horizontal resolution in metres. Default is 250 m
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster object of leach rates
 #'@keywords Water Quality, CASM, leach
@@ -15,7 +16,8 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
                                    SoilDrainageData=SoilDrainageShapeFile,
                                    SlopeClassData=SlopeClassShapeFile,
                                    PrecipIrrig=PrecipIrrigShapeFile,
-                                   LeachRateData = LeachRateLUTFile){
+                                   LeachRateData = LeachRateLUTFile,
+                                   Resolution = 250){
   
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
@@ -26,27 +28,45 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   LeachRateLookUpTable<- read.xlsx(LeachRateData)
   #Check for duplicates!! This has ocurred in the past and caused an error later on which took hours to figure out!
   LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
-  #Expand any "All" rows to have a row for each possible combination
-  AllIndices <- which(LeachRateLookUpTable$`Precip.(><1000mm)` == "All")
-  #work through the "All" indices.
-  UniqueClasses <- unique(LeachRateLookUpTable$`Precip.(><1000mm)`)
-  #Get the number of additional rows needed to be created
-  RowsToCreate <- length(UniqueClasses - 2)
-  #Create a small data frame with just the number of rows that match the UniqueClasses (less 1 for the All class which we don't want any more)
-  ExtraRows <- LeachRateLookUpTable[c()]
   
+  #Fill in the missing median values for the "All" rows to match the "mean" values
+  LeachRateLookUpTable$`N.loss.(median)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)] <-  LeachRateLookUpTable$`N.loss.(mean)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)]
+  LeachRateLookUpTable$`P.loss.(median)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)] <-  LeachRateLookUpTable$`P.loss.(mean)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)]
+ 
+  #Expand any "All" rows to have a row for each possible combination
+  #Repeat for each of the class types
+  for (ClassColumn in c("Soil.drainage","Slope.Class","Precip.(><1000mm)")){
+    #Find the unique classes 
+    UniqueClasses <- unique(LeachRateLookUpTable[,ClassColumn])
+    #But don't have "All as a unique class
+    UniqueClasses <- UniqueClasses[!UniqueClasses == "All"]
+    
+    #Get the rows that have "All" in the current class column
+    AllIndices <- which(LeachRateLookUpTable[,ClassColumn] == "All")
+    #work through the "All" indices, duplicating the rows to provide one for each unique classification
+    for (AllIndex in AllIndices){
+      LeachRateLookUpTable[AllIndex,ClassColumn] <- UniqueClasses[1]
+      #Create a small data frame with just the number of rows that match the UniqueClasses (less 1 as the original "All" classed row row can get re-classed as one of the unique classes)
+      ExtraRows <- LeachRateLookUpTable[rep(AllIndex,(length(UniqueClasses)-1)),]
+      #Re-class them to match the unique classes
+      ExtraRows[,ClassColumn] <- UniqueClasses[-1]
+      #And add them on to the end of the look up table
+      LeachRateLookUpTable <- rbind(LeachRateLookUpTable,ExtraRows)
+    } #end of the for loop that worked throught the All indices
+
+  }
   #Convert the strings to factors to enable compatibility with the shapefiles and the rasters generated from them
   LeachRateLookUpTable[,1:5] <- lapply(LeachRateLookUpTable[,1:5], as.factor)
   
   #Create a "CombinedClasses" column
   LeachRateLookUpTable$CombinedClasses <- do.call(paste,lapply(LeachRateLookUpTable[,c(1,3,4,5)],as.numeric))
 
-
+  #Now move on to the spatial data
   #Load the precipitation/irrigation spatial data
   PrecipIrrigSpatial <- readOGR(PrecipIrrig, stringsAsFactors = TRUE)
 
   #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
-  RasterBase <- raster(resolution = 250, ext = extent(PrecipIrrigSpatial), crs = proj4string(PrecipIrrigSpatial) )
+  RasterBase <- raster(resolution = Resolution, ext = extent(PrecipIrrigSpatial), crs = proj4string(PrecipIrrigSpatial) )
   PrecipIrrigRaster <- rasterize(PrecipIrrigSpatial,RasterBase,"Precip2")
   #Add a raster attribute table which labels the values
   PrecipIrrigRaster <- ratify(PrecipIrrigRaster)
@@ -77,32 +97,49 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   
   #Load land use category spatial data
   LanduseSpatial <- readOGR(LanduseData, stringsAsFactors = TRUE)
+  
+  #Need to match the factor levels of the EcoClass attribute to the factor levels of the LeachRateLookUpTable
+  LanduseSpatial@data$EcoClass <- factor(LanduseSpatial@data$EcoClass, levels = levels(LeachRateLookUpTable$Land.Use))
+  
   LanduseRaster <- rasterize(LanduseSpatial,RasterBase,"EcoClass")
   #Add a raster attribute table which labels the values
   LanduseRaster <- ratify(LanduseRaster)
   rat <- levels(LanduseRaster)[[1]]
-  rat$LanduseClass <- levels(LanduseSpatial@data$EcoClass)
+  rat$LanduseClass <- levels(LanduseSpatial@data$EcoClass)[rat$ID]
   levels(LanduseRaster) <- rat
   #levelplot(LanduseRaster)
   
-  #Create a raster brick with all the parameters needed to determine the MPI leach rate
-  TotalRaster <- brick(LanduseRaster,SoilDrainageRaster,SlopeClassRaster,PrecipIrrigRaster)
-  names(TotalRaster) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
+  #Create a raster brick with all the parameters needed to determine the leach rate from the look up table
+  PredictorRasters <- brick(LanduseRaster,SoilDrainageRaster,SlopeClassRaster,PrecipIrrigRaster)
+  names(PredictorRasters) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
   #Mask the raster brick to just the Southland FMU areas as given in the PrecipIrrig polygon layer.
-  TotalRaster <- rasterize(x=PrecipIrrigSpatial,y=TotalRaster,mask=TRUE)
+  PredictorRasters <- rasterize(x=PrecipIrrigSpatial,y=PredictorRasters,mask=TRUE)
   
-  #Use "calc" to work through each cell x,y cell of the raster brick and select the appropriate leach rate
-  LeachRateRaster <- calc(TotalRaster, function(x) {
-    #Concatenate the predictor values of the current x,y, cell
-    CriteriaToLookup <- paste(x,collapse=" ")
+  #Figure out the leachrates for each of the leach rate types
+  LeachTypes <- c("N.loss.(mean)","N.loss.(median)","P.loss.(mean)","P.loss.(median)")
+  LeachRateRasters <- lapply(LeachTypes, function(LeachType){
 
-    #lookup the current cell's predictor string in the look up table
-    N_loss <- LeachRateLookUpTable$N_loss[LeachRateLookUpTable$Landscape.Category %in% CriteriaToLookup]
-    
-    #Catch any missing values and make them NA
-    if(length(N_loss) == 0) N_loss <- NA
-    
-    return(N_loss)
+    #Use "calc" to work through each x,y cell of the raster brick and select the appropriate leach rate
+    LeachRateRaster <- calc(PredictorRasters, function(x) {
+      #browser()
+      #Concatenate the predictor values of the current x,y, cell
+      CriteriaToLookup <- paste(x,collapse=" ")
+      #if(all(complete.cases(x))) browser()
+      #lookup the current cell's predictor string in the look up table
+      LeachRate <- LeachRateLookUpTable[LeachRateLookUpTable$CombinedClasses %in% CriteriaToLookup,LeachType]
+      
+      #Catch any missing values and make them NA
+      if(length(LeachRate) == 0) LeachRate <- NA
+      
+      return(LeachRate)
+    })
+    return(LeachRateRaster)
   })
   
+  names(LeachRateRasters) <- LeachTypes
+
+#Stick all the rasters together as a stack
+  OutputRasterStack <- stack(brick(LeachRateRasters),PredictorRasters)
+  
+  return(OutputRasterStack)
 }

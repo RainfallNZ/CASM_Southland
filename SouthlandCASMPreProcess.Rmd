@@ -15,6 +15,7 @@ if (!require(raster)) install.packages("raster"); library(raster)               
 if (!require(leaflet)) install.packages("leaflet"); library(leaflet)                #used for spatial processing
 if (!require(rmapshaper)) install.packages("rmapshaper"); library(rmapshaper)                #used for spatial processing
 if (!require(devtools)) install.packages("devtools"); library(devtools)                #Needed to load libraries from github
+if (!require(tictoc)) install.packages("tictoc"); library(tictoc)                         #used for timing processing
 if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
 
 ```
@@ -64,6 +65,8 @@ PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/Precipitati
 
 #Set the name of raster file data in geoTiff format
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
+LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRaster 250 x 250.tif")
+PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
 
 #Set the names of some text tables in csv format
 #OutletReachNamesFile   <- "OutletReachNames.csv"
@@ -225,7 +228,28 @@ GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
 GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 
-LeachRateRaster <- 
+#Load the leachrate data if it exists
+LeachRateRaster <- stack(file.path(GISDataDirectory,LeachRateRasterFile))
+
+#**********Need to select which leach rate we want. CUrrently have a choice of 4.
+
+#**********************************************************
+#If the leach rate raster file is missing or needs to be re-created then use the following:
+#Takes 4 minutes at 250 m
+source(file.path(ProjectDirectory,"R/CASM_Southland/LeachRateRasterCreator.R"))
+tic()
+LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
+                                   SoilDrainageData=SoilDrainageShapeFile,
+                                   SlopeClassData=SlopeClassShapeFile,
+                                   PrecipIrrig=PrecipIrrigShapeFile,
+                                   LeachRateData = LeachRateLUTFile,
+                                   Resolution = 250)
+toc()
+#And save it for nexttime
+writeRaster(LeachRateRaster[[1:4]],LeachRateRasterFile,overwrite=TRUE)
+writeRaster(LeachRateRaster[[5:8]],PredictorRasterFile,overwrite=TRUE)
+
+#******************************************************************
 
 ```
 
