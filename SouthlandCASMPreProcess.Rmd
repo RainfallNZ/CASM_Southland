@@ -40,13 +40,13 @@ REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdat
 #Set the names of the shapefile spatial data in ESRI format
 #REC data is available from the MfE data service. See https://data.mfe.govt.nz/layer/51826-river-environment-classification-manawatu-2010/ and https://data.mfe.govt.nz/layer/51847-river-environment-classification-watershed-manawatu-2010/
 
-REC_rivers              <- "ES_REC2_Riverlines"
+REC_rivers              <- "ES_REC2V5_Riverlines"
 #Or an REC3 version
 #REC_rivers             <- "ES_REC3_Riverlines"
 #REC_Catchments         <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
 
-WaterQualityStationFile <- "WaterQualitySites" #A Point shape file
-LakeSiteFile            <- "LakeSites"  #A Point shape file
+#WaterQualityStationFile <- "WaterQualitySites" #A Point shape file
+#LakeSiteFile            <- "LakeSites"  #A Point shape file
 LakePolygonFile         <- "NZLRIClip_Lakes" #A polygon shape file
 
 ExtraCASMNodeSiteFile   <- "ExtraCASMNodes"  #A Point Shape File
@@ -69,10 +69,13 @@ LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRaster 250 x 250
 PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
 
 #Set the names of some text tables in csv format
+LakeSiteFile            <- file.path(DataDirectory,"Lakes_ToIncludeAsAssessmentPoints.csv")
+WaterQualityStationFile <- file.path(DataDirectory,"RWQSiteList_IncludingAddtional5.csv")
 #OutletReachNamesFile   <- "OutletReachNames.csv"
 EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
+UnnecesaryAssessmentSitesFile <-  file.path(DataDirectory,"SubcatchmentJunctionSitesNotRequired.csv")
 
 #Set the names of some Excel workbooks
 LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
@@ -125,7 +128,9 @@ RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
                            layer = REC_rivers, stringsAsFactors = FALSE)
 
 RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
+#Explicitly set the "headw_dist","nzsegment","headw_dist","TO_NODE","FROM_NODE" attributes to numeric
 
+RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")]<- lapply(RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")],as.numeric)
 #Load the REC2 utility data with lots of useful stuff in it, including river names
 load(REC2UtilityFile)   #This provides the REC2Utility data frame
 #Cut it down to Southland
@@ -169,35 +174,37 @@ RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[ma
 #Load the mean flow data for the REC V2. This is provided in an rdata file which contains the data frame REC2MeanFlow, with three columns, "nzsegment","QMean", and "us_catarea"
 #load(REC_MeanFlowFile)
 
-#Load the Southland water quality measurement site data
-MeasurementSites <- readOGR(dsn =file.path(GISDataDirectory,WaterQualityStationFile),
-                           layer = WaterQualityStationFile, stringsAsFactors = FALSE)
-MeasurementSites <- spTransform(MeasurementSites,CRS("+init=epsg:2193") )
-
+#Load the Southland water quality measurement site data and turn into a spatial data frame
+MeasurementSites <- read.table(WaterQualityStationFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
+MeasurementSites <- SpatialPointsDataFrame(coords = MeasurementSites[,c("downcoordX","downcoordY")], data = MeasurementSites,
+                               proj4string = CRS("+init=epsg:2193"))
 #make sure the nzsegment attribute is numeric
 MeasurementSites$nzsegment <- as.numeric(MeasurementSites$nzsegment)
-
-#Remove the duplicate sites
+#Remove any duplicate sites
 MeasurementSites <- MeasurementSites[!duplicated(MeasurementSites$nzsegment),]
 
 #Load lake sites of interest
-LakeSites <- readOGR(dsn =file.path(GISDataDirectory,LakeSiteFile),
-                           layer = LakeSiteFile, stringsAsFactors = FALSE)
-LakeSites <- spTransform(LakeSites,CRS("+init=epsg:2193") )
-
-#Load the lake polygon layer
-Lakes <- readOGR(dsn =file.path(GISDataDirectory,LakePolygonFile),
-                           layer = LakePolygonFile, stringsAsFactors = FALSE)
-
-Lakes <- spTransform(Lakes,CRS("+init=epsg:2193") )
-
+LakeSites  <- read.table(LakeSiteFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
+LakeSites <- SpatialPointsDataFrame(coords = LakeSites[,c("downcoordX","downcoordY")], data = LakeSites,
+                               proj4string = CRS("+init=epsg:2193"))
 #make sure the nzsegment attribute is numeric
 LakeSites$nzsegment <- as.numeric(LakeSites$nzsegment)
+#Set the name of the un named lake to "un-named"
+LakeSites@data$LakeName[LakeSites@data$LakeName==" "] <- "unnamed"
+
+
+#Load the lake polygon layer
+Lakes <- readOGR(dsn =file.path(GISDataDirectory,LakePolygonFile),layer = LakePolygonFile, stringsAsFactors = FALSE)
+Lakes <- spTransform(Lakes,CRS("+init=epsg:2193") )
 
 #Load the additional subjective site locations
 ExtraSites <- readOGR(dsn =file.path(GISDataDirectory,ExtraCASMNodeSiteFile),
                            layer = ExtraCASMNodeSiteFile, stringsAsFactors = FALSE)
 ExtraSites <- spTransform(ExtraSites,CRS("+init=epsg:2193") )
+ExtraSites$nzsegment <- as.numeric(ExtraSites$nzsegment)
+
+#Load a list of river segments where assessment points are NOT needed.
+UnnecesaryAssessmentSites <- read.table(UnnecesaryAssessmentSitesFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
 
 #Load the additional river mouth site locations
 RiverMouthSites <- readOGR(dsn =file.path(GISDataDirectory,RiverOutletsFile),
@@ -229,25 +236,25 @@ GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile
 GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 
 #Load the leachrate data if it exists
-LeachRateRaster <- stack(file.path(GISDataDirectory,LeachRateRasterFile))
+LeachRateRaster <- stack(LeachRateRasterFile)
 
 #**********Need to select which leach rate we want. CUrrently have a choice of 4.
 
 #**********************************************************
 #If the leach rate raster file is missing or needs to be re-created then use the following:
 #Takes 4 minutes at 250 m
-source(file.path(ProjectDirectory,"R/CASM_Southland/LeachRateRasterCreator.R"))
-tic()
-LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
-                                   SoilDrainageData=SoilDrainageShapeFile,
-                                   SlopeClassData=SlopeClassShapeFile,
-                                   PrecipIrrig=PrecipIrrigShapeFile,
-                                   LeachRateData = LeachRateLUTFile,
-                                   Resolution = 250)
-toc()
-#And save it for nexttime
-writeRaster(LeachRateRaster[[1:4]],LeachRateRasterFile,overwrite=TRUE)
-writeRaster(LeachRateRaster[[5:8]],PredictorRasterFile,overwrite=TRUE)
+# source(file.path(ProjectDirectory,"R/CASM_Southland/LeachRateRasterCreator.R"))
+# tic()
+# LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
+#                                    SoilDrainageData=SoilDrainageShapeFile,
+#                                    SlopeClassData=SlopeClassShapeFile,
+#                                    PrecipIrrig=PrecipIrrigShapeFile,
+#                                    LeachRateData = LeachRateLUTFile,
+#                                    Resolution = 250)
+# toc()
+# #And save it for nexttime
+# writeRaster(LeachRateRaster[[1:4]],LeachRateRasterFile,overwrite=TRUE)
+# writeRaster(LeachRateRaster[[5:8]],PredictorRasterFile,overwrite=TRUE)
 
 #******************************************************************
 
@@ -311,11 +318,11 @@ Create a bunch of points that represent reaches of sub-catchment confluences ove
 SubCatchmentConfluenceReaches <- ReachJunctionFinderByOrder(RECReachNetwork@data,OrderThreshold = 5)
 
 SubCatchmentConfluencePoints <- RECReachNetwork@data[RECReachNetwork@data$nzsegment %in% SubCatchmentConfluenceReaches,]
-SubCatchmentConfluencePoints <- SubCatchmentConfluencePoints[,c("nzsegment","downcoordX","downcoordY")]
+SubCatchmentConfluencePoints <- SubCatchmentConfluencePoints[,c("nzsegment","upcoordX","upcoordY")]
 SubCatchmentConfluencePoints$Reason <- "Base of catchment"
 
 #Turn into a spatial dataframe
-SubCatchmentConfluencePointsSpatial <- SpatialPointsDataFrame(coords = SubCatchmentConfluencePoints[,c("downcoordX","downcoordY")],
+SubCatchmentConfluencePointsSpatial <- SpatialPointsDataFrame(coords = SubCatchmentConfluencePoints[,c("upcoordX","upcoordY")],
                                                               data = SubCatchmentConfluencePoints[,c("nzsegment","Reason")],
                                                               proj4string = CRS("+init=epsg:2193"))
 
@@ -324,6 +331,9 @@ SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[which
 
 #Remove any points that are terminal reaches as they have been manually selected in the "RiverMouthSites"
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!SubCatchmentConfluencePointsSpatial$nzsegment %in% SouthlandREC2Utility$nzsegment[SouthlandREC2Utility$isTerminal],]
+
+#Remove any sites from the "unnecesary sites" list
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!(SubCatchmentConfluencePointsSpatial$nzsegment %in% UnnecesaryAssessmentSites$nzsegment),]
 
 #Keep the points that are not within lakes
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[is.na(over(SubCatchmentConfluencePointsSpatial,Lakes)[,1]),]
@@ -336,6 +346,9 @@ SubCatchmentConfluencePointsSpatial@data <- join(SubCatchmentConfluencePointsSpa
 
 #Remove points not within the overall domain
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!is.na(SubCatchmentConfluencePointsSpatial %over% CompleteDomain),]
+
+#Save a copy for viewing in QGIS if required
+#writeOGR(SubCatchmentConfluencePointsSpatial, file.path(GISDataDirectory,"SubCatchmentJunctionSites"),layer="SubcatchmentJunctionSites",driver="ESRI Shapefile",overwrite_layer=TRUE)
 ```
 
 
@@ -592,7 +605,7 @@ MapData$Physiography <- PhysiographyRasterWGS84
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-          MapData$MeasurementSites@data[i, "sitename"]) 
+          MapData$MeasurementSites@data[i, "sID"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
@@ -600,9 +613,14 @@ EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
           MapData$EstuarySites@data[i, "Name"]) 
 })
 
-LakeSiteLabels <- lapply(seq(nrow(MapData$LakeSites@data)), function(i) {
+UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-          MapData$LakeSites@data[i, "Lake_Name"]) 
+          MapData$LakeSites@data[i, "LakeName"]) 
+})
+
+MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
+  paste0("Lake site:", '</br>', 
+          MapData$LakeSites@data[i, "LakeName"]) 
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
@@ -695,14 +713,15 @@ map <- map %>%
 
 map <- map %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
-  addCircleMarkers(data = MapData$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$LakeSites[MapData$LakeSites@data$Monitored,], color = "darkorange", fillOpacity = 0.5, label = lapply(MonitoredLakeSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$LakeSites[!MapData$LakeSites@data$Monitored,], color = "yellow", fillOpacity = 0.5, label = lapply(UnMonitoredLakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$EstuarySites, color = "turquoise", fillOpacity = 0.5,label = lapply(EstuarySiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("RWQ","Lake","Estuary","River Mouth","Subcatchment"),
+  addLegend("topright", colors = c("#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
             opacity = 1) %>%
   
