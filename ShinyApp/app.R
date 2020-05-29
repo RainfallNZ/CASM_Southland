@@ -10,7 +10,7 @@ MapData <- readRDS("Data/SpatialData.RDS")
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-         MapData$MeasurementSites@data[i, "sitename"]) 
+         MapData$MeasurementSites@data[i, "sID"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
@@ -18,9 +18,14 @@ EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
          MapData$EstuarySites@data[i, "Name"]) 
 })
 
-LakeSiteLabels <- lapply(seq(nrow(MapData$LakeSites@data)), function(i) {
+UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-         MapData$LakeSites@data[i, "Lake_Name"]) 
+         MapData$LakeSites@data[i, "LakeName"]) 
+})
+
+MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
+  paste0("Lake site:", '</br>', 
+         MapData$LakeSites@data[i, "LakeName"]) 
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
@@ -31,7 +36,6 @@ SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
   paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
 })
-
 
 #Setup the map
 map <- leaflet::leaflet() %>% 
@@ -57,6 +61,22 @@ map <- map %>%
                 color = "#666"),
               label = Catchmentlabels,
               group="Major Catchments")
+
+#Add the point source sites
+PointSourceLabels <- sprintf(
+  "<strong>Point source</strong><br/>%s ",
+  MapData$PointSourceSite@data$Source
+) %>% lapply(htmltools::HTML)
+
+#iconFile <- pchIcons2(pch = 25, char="!",bg="white",lwd = 2)
+
+map <- map %>%
+  addMarkers(data=MapData$PointSourceSites,
+             icon= ~ icons(iconUrl = "Data/Icon_warning.png",iconAnchorX = 20, iconAnchorY = 0),
+             label = PointSourceLabels,
+             #color = "black",
+             #fillOpacity = 0.5,
+             group="Point Sources")
 
 #Add the groundwater zones
 GroundwaterLabels <- sprintf(
@@ -113,23 +133,24 @@ map <- map %>%
 
 map <- map %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
-  addCircleMarkers(data = MapData$LakeSites, color = "darkorange", fillOpacity = 0.5, label = lapply(LakeSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$LakeSites[MapData$LakeSites@data$Monitored,], color = "darkorange", fillOpacity = 0.5, label = lapply(MonitoredLakeSiteLabels, htmltools::HTML)) %>%
+  addCircleMarkers(data = MapData$LakeSites[!MapData$LakeSites@data$Monitored,], color = "yellow", fillOpacity = 0.5, label = lapply(UnMonitoredLakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$EstuarySites, color = "turquoise", fillOpacity = 0.5,label = lapply(EstuarySiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","turquoise","brown","lightblue"), labels = c("RWQ","Lake","Estuary","River Mouth","Subcatchment"),
+  addLegend("topright", colors = c("#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
             opacity = 1) %>%
   
   addLayersControl(
-    overlayGroups =c("Major Catchments","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+    overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
     options = layersControlOptions(collapsed=FALSE)
   ) %>%
   
-  hideGroup(c("Major Catchments","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
 

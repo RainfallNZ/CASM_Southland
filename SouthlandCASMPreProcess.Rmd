@@ -76,6 +76,7 @@ EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 UnnecesaryAssessmentSitesFile <-  file.path(DataDirectory,"SubcatchmentJunctionSitesNotRequired.csv")
+PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegmentAssigned.csv")
 
 #Set the names of some Excel workbooks
 LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
@@ -230,6 +231,11 @@ EstuarySitesSpatial <- SpatialPointsDataFrame(coords = EstuarySites[,c("NZTME","
 #   WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
 #   levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
 
+#Load the point source site data
+PointSources <- read.csv(PointSourceSitesFile,stringsAsFactors = FALSE)
+#Create a spatial file from it
+PointSourcesSpatial <- SpatialPointsDataFrame(coords = PointSources[,c("Easting","Northing")],data = PointSources, proj4string = CRS("+init=epsg:2193"))
+
   #Load the Groundwater Management Zone data
 GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
@@ -355,8 +361,32 @@ SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!is.n
 From the load sites, point source sites, and water management subzones outlets, create the required network.
 !!This doesn't work with REC3!! as all the nzsegment values are REC2 values.
 ```{r}
+#Combine all the points together in a single cohesive data frame
+CombinedPoints <- data.frame(nzsegment = numeric(),Type= character(),Name= character(),Comment=character(), stringsAsFactors = FALSE )
+Temporary <- MeasurementSites@data[,c("nzsegment","sID")]
+names(Temporary)[2] <- "Name"
+Temporary$Type <- "Water quality measurement site"
+Temporary2 <- LakeSites@data[,c("nzsegment","LakeName")]
+names(Temporary2)[2] <- "Name"
+Temporary2$Type <- "Lake"
+Temporary2$Comment <- "Not monitored"
+Temporary2$Comment[LakeSites@data$Monitored] <- "Monitored"
+Temporary3 <- EstuarySitesSpatial@data[,c("nzsegment","Name")]
+Temporary3$Type <- "Estuary"
+Temporary4 <- SubCatchmentConfluencePointsSpatial@data[,c("nzsegment","RiverName","Reason")]
+names(Temporary4)[c(2,3)] <- c("Name","Comment")
+Temporary4$Type <- "Various"
+Temporary5 <- RiverMouthSites@data[,c("nzsegment","River")]
+names(Temporary5)[2] <- "Name"
+Temporary5$Type <- "Rivermouth"
+CombinedPoints <- rbind.fill(CombinedPoints,Temporary,Temporary2,Temporary3,Temporary4,Temporary5)
+#Add Water management class to it
+CombinedPoints$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(CombinedPoints$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
+
+write.table(CombinedPoints,file.path(DataDirectory,"CombinedAssessmentPoints.csv"),sep=",",row.names = FALSE)
+
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
-AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment)
+AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment, PointSources = PointSourcesSpatial@data$nzsegment)
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
@@ -367,7 +397,7 @@ CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% Complet
 
 By request of Ton.
 
-Plot a histogram showing percentage of segments (for strahler order 3 and above) are in 10 bins of % upstream exotic grassland
+Plot a histogram showing percentage of segments (for strahler order 3 and above) that are in 10 bins of % upstream exotic grassland
 On the same histogram show the percentage of location points in each bin
 
 Then repeat for upstream catchment area
@@ -597,7 +627,7 @@ RECForMaps <- ms_simplify(RECForMaps)
 #Note that the raster data was reprojected when it was loaded.
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
-SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones)
+SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial)
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 MapData$Physiography <- PhysiographyRasterWGS84
@@ -632,7 +662,6 @@ RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function
   paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
 })
 
-
 #Setup the map
 map <- leaflet::leaflet() %>% 
   leaflet::addProviderTiles(providers$OpenStreetMap) %>%
@@ -657,6 +686,20 @@ map <- map %>%
     color = "#666"),
   label = Catchmentlabels,
   group="Major Catchments")
+
+#Add the point source sites
+PointSourceLabels <- sprintf(
+  "<strong>Point source</strong><br/>%s ",
+  MapData$PointSourceSite@data$Source
+) %>% lapply(htmltools::HTML)
+
+map <- map %>%
+  addMarkers(data=MapData$PointSourceSites,
+                   icon= ~ icons(iconUrl = "Data/Icon_warning.png",iconAnchorX = 20, iconAnchorY = 0),  #Note the use of a subdirectory called Data to keep the icon file in. This is done to replicate the situation on the Shiny App so that I can simply copy the map script directly over.
+                   label = PointSourceLabels,
+                   #color = "black",
+                   #fillOpacity = 0.5,
+                   group="Point Sources")
 
 #Add the groundwater zones
 GroundwaterLabels <- sprintf(
@@ -726,17 +769,19 @@ map <- map %>%
             opacity = 1) %>%
   
   addLayersControl(
-          overlayGroups =c("Major Catchments","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+          overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
           options = layersControlOptions(collapsed=FALSE)
           ) %>%
   
-  hideGroup(c("Major Catchments","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
 
 #save the mapdata as an R file so that it can be used in an RShinyApp
 saveRDS(MapData,file.path(ProjectDirectory,"/R/CASM_Southland/ShinyApp/Data","SpatialData.RDS"))
 saveRDS(map,file.path(ProjectDirectory,"/R/CASM_Southland/ShinyApp/Data","map.RDS"))
+#Copy the icon file to the RShiny directory
+file.copy(from = "Icon_warning.png", to=file.path(ProjectDirectory, "/R/CASM_Southland/ShinyApp/Data","Icon_warning.png"))
 ```
 
 
