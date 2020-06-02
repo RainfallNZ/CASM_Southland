@@ -657,12 +657,12 @@ EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
 
 UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-          MapData$LakeSites@data[i, "LakeName"]) 
+          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
 })
 
 MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-          MapData$LakeSites@data[i, "LakeName"]) 
+          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
