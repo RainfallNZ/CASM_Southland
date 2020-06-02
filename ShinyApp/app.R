@@ -10,7 +10,7 @@ MapData <- readRDS("Data/SpatialData.RDS")
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-         MapData$MeasurementSites@data[i, "sID"]) 
+         MapData$MeasurementSites@data[i, "SiteDescription"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
@@ -35,6 +35,10 @@ SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
   paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
+})
+
+TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
+  paste0("Te Ao Marama site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
 })
 
 #Setup the map
@@ -68,11 +72,9 @@ PointSourceLabels <- sprintf(
   MapData$PointSourceSite@data$Source
 ) %>% lapply(htmltools::HTML)
 
-#iconFile <- pchIcons2(pch = 25, char="!",bg="white",lwd = 2)
-
 map <- map %>%
   addMarkers(data=MapData$PointSourceSites,
-             icon= ~ icons(iconUrl = "Data/Icon_warning.png",iconAnchorX = 20, iconAnchorY = 0),
+             icon= ~ icons(iconUrl = "Data/Icon_warning.png",iconAnchorX = 20, iconAnchorY = 0),  #Note the use of a subdirectory called Data to keep the icon file in. This is done to replicate the situation on the Shiny App so that I can simply copy the map script directly over.
              label = PointSourceLabels,
              #color = "black",
              #fillOpacity = 0.5,
@@ -132,6 +134,7 @@ map <- map %>%
 
 
 map <- map %>%
+  addCircleMarkers(data = MapData$TeAoMaramaSites, color = "#61ba46",fillOpacity = 0.5, label = lapply(TeAoMaramaSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$LakeSites[MapData$LakeSites@data$Monitored,], color = "darkorange", fillOpacity = 0.5, label = lapply(MonitoredLakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$LakeSites[!MapData$LakeSites@data$Monitored,], color = "yellow", fillOpacity = 0.5, label = lapply(UnMonitoredLakeSiteLabels, htmltools::HTML)) %>%
@@ -141,7 +144,7 @@ map <- map %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
+  addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Te Ao Marama","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
             opacity = 1) %>%
   

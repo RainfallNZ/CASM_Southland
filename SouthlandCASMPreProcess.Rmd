@@ -70,13 +70,15 @@ PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250
 
 #Set the names of some text tables in csv format
 LakeSiteFile            <- file.path(DataDirectory,"Lakes_ToIncludeAsAssessmentPoints.csv")
-WaterQualityStationFile <- file.path(DataDirectory,"RWQSiteList_IncludingAddtional5.csv")
+WaterQualityStationFile <- file.path(DataDirectory,"WQStationLocations_May2020.csv")
 #OutletReachNamesFile   <- "OutletReachNames.csv"
 EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 UnnecesaryAssessmentSitesFile <-  file.path(DataDirectory,"SubcatchmentJunctionSitesNotRequired.csv")
 PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegmentAssigned.csv")
+#TeAoMaramaSitesFile         <- file.path(DataDirectory,"TeAoMaramaSites.csv")
+TeAoMaramaSitesFile         <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 
 #Set the names of some Excel workbooks
 LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
@@ -231,6 +233,13 @@ EstuarySitesSpatial <- SpatialPointsDataFrame(coords = EstuarySites[,c("NZTME","
 #   WaterPlanClassRAT$WaterPlanClass <- c("Hills", "Lakes", "Lowland Hardbed", "Lowland Softbed", "Mountain", "Natural State")
 #   levels(WaterPlanRasterWGS84)  <- WaterPlanClassRAT
 
+#Load the Maori Culturally important sites
+TeAoMaramaSites <- read.csv(TeAoMaramaSitesFile, stringsAsFactors = FALSE, encoding = "UTF-8")
+TeAoMaramaSites <- TeAoMaramaSites[!is.na(TeAoMaramaSites$nzsegment) & TeAoMaramaSites$New.site == "Y",]
+#Create a spatial file from it, using the upcoordinates from the REC data
+TeAoMaramaSites[,c("Easting","Northing")] <- RECReachNetwork@data[match(TeAoMaramaSites$nzsegment,RECReachNetwork$nzsegment), c("upcoordX","upcoordY")]
+TeAoMaramaSpatial <- SpatialPointsDataFrame(coords = TeAoMaramaSites[,c("Easting","Northing")], data = TeAoMaramaSites, proj4string = CRS("+init=epsg:2193"))
+
 #Load the point source site data
 PointSources <- read.csv(PointSourceSitesFile,stringsAsFactors = FALSE)
 #Create a spatial file from it
@@ -379,14 +388,17 @@ Temporary4$Type <- "Various"
 Temporary5 <- RiverMouthSites@data[,c("nzsegment","River")]
 names(Temporary5)[2] <- "Name"
 Temporary5$Type <- "Rivermouth"
-CombinedPoints <- rbind.fill(CombinedPoints,Temporary,Temporary2,Temporary3,Temporary4,Temporary5)
+Temporary6 <- TeAoMaramaSpatial@data[,c("nzsegment","Waterbody")]
+names(Temporary6)[2] <- "Name"
+Temporary6$Type <- "Cultural"
+CombinedPoints <- rbind.fill(CombinedPoints,Temporary,Temporary2,Temporary3,Temporary4,Temporary5,Temporary6)
 #Add Water management class to it
 CombinedPoints$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(CombinedPoints$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
 write.table(CombinedPoints,file.path(DataDirectory,"CombinedAssessmentPoints.csv"),sep=",",row.names = FALSE)
 
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
-AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment, PointSources = PointSourcesSpatial@data$nzsegment)
+AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment, PointSources = PointSourcesSpatial@data$nzsegment, TeAoMarama = TeAoMaramaSpatial@data$nzsegment)
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
@@ -627,7 +639,7 @@ RECForMaps <- ms_simplify(RECForMaps)
 #Note that the raster data was reprojected when it was loaded.
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
-SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial)
+SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial)
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 MapData$Physiography <- PhysiographyRasterWGS84
@@ -635,7 +647,7 @@ MapData$Physiography <- PhysiographyRasterWGS84
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-          MapData$MeasurementSites@data[i, "sID"]) 
+          MapData$MeasurementSites@data[i, "SiteDescription"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
@@ -660,6 +672,10 @@ SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
   paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
+})
+
+TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
+  paste0("Te Ao Marama site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
 })
 
 #Setup the map
@@ -755,6 +771,7 @@ map <- map %>%
   
 
 map <- map %>%
+  addCircleMarkers(data = MapData$TeAoMaramaSites, color = "#61ba46",fillOpacity = 0.5, label = lapply(TeAoMaramaSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$MeasurementSites, color = "#FF3333",fillOpacity = 0.5, label = lapply(MeasurementSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$LakeSites[MapData$LakeSites@data$Monitored,], color = "darkorange", fillOpacity = 0.5, label = lapply(MonitoredLakeSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$LakeSites[!MapData$LakeSites@data$Monitored,], color = "yellow", fillOpacity = 0.5, label = lapply(UnMonitoredLakeSiteLabels, htmltools::HTML)) %>%
@@ -764,7 +781,7 @@ map <- map %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
+  addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Te Ao Marama","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
             opacity = 1) %>%
   
