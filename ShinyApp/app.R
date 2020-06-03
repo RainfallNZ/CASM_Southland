@@ -38,7 +38,7 @@ RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function
 })
 
 TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
-  paste0("Te Ao Marama site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
+  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
 })
 
 #Setup the map
@@ -144,7 +144,7 @@ map <- map %>%
   
   addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
   
-  addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Te Ao Marama","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
+  addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Cultural","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
             opacity = 1) %>%
   
@@ -156,7 +156,6 @@ map <- map %>%
   hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
 
 map
-
 
 ui <- fluidPage(
   titlePanel("LWP"),
