@@ -16,7 +16,9 @@ if (!require(leaflet)) install.packages("leaflet"); library(leaflet)            
 if (!require(rmapshaper)) install.packages("rmapshaper"); library(rmapshaper)                #used for spatial processing
 if (!require(devtools)) install.packages("devtools"); library(devtools)                #Needed to load libraries from github
 if (!require(tictoc)) install.packages("tictoc"); library(tictoc)                         #used for timing processing
+if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
 if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
+source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\RECReachNaming.R")
 
 ```
 
@@ -77,8 +79,11 @@ EstuarySiteFile         <- "Estuaries.csv"
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 UnnecesaryAssessmentSitesFile <-  file.path(DataDirectory,"SubcatchmentJunctionSitesNotRequired.csv")
 PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegmentAssigned.csv")
-#TeAoMaramaSitesFile         <- file.path(DataDirectory,"TeAoMaramaSites.csv")
-TeAoMaramaSitesFile         <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
+#TeAoMaramaSitesFile    <- file.path(DataDirectory,"TeAoMaramaSites.csv")
+TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
+ExtraRECReachLabelsFile <- file.path(DataDirectory, "RECV2ReachNameExtras.csv")
+CASMBasinLookupTableFile<- file.path(DataDirectory, "CASMBasinToSoouthlandFMULookupTable.csv")
+
 
 #Set the names of some Excel workbooks
 LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
@@ -175,7 +180,7 @@ RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[ma
 #RECWatersheds <- spTransform(RECWatersheds,CRS("+init=epsg:2193") )
 
 #Load the mean flow data for the REC V2. This is provided in an rdata file which contains the data frame REC2MeanFlow, with three columns, "nzsegment","QMean", and "us_catarea"
-#load(REC_MeanFlowFile)
+load(REC_MeanFlowFile)
 
 #Load the Southland water quality measurement site data and turn into a spatial data frame
 MeasurementSites <- read.table(WaterQualityStationFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
@@ -306,26 +311,29 @@ Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
 
 
 ```
+
+
+The following was used to help identify outlet reaches of importance. Subjective selection proved to be a better option.
 Identify the lowest reach in each subcatchment for Strahler order 4 and up, and create a point at its lowest node
 
 
 Not sure if the following is needed anymore.
 Get the "nzsegment" attributes of the lowest reach in each of the major catchments
 ```{r}
-CatchmentReaches <- RECReachNetwork %over% MajorCatchments #Note this takes about a minute to do
-RECReachNetwork$Catchment <- CatchmentReaches$FactSheetZ
-
-#Work through each management zone to find the reach with the greatest distance to the headwater (the hdw_dst attribute). . I tried doing this based on the least largest area (the CUM_ARE attribute) but there were some zero values, I also tried distance to the sea (the LENGTHD attribute, but near the coast I was getting small reaches that were not the main river channel, but were closer to the sea)
-MajorCatchmentOuteltReaches <- lapply(seq_along(MajorCatchments$FactSheetZ), function(SingleCatchment){
-  #browser()
-  CurrentCatchment <- MajorCatchments$FactSheetZ[SingleCatchment]
-  CurrentCatchmentReaches <- RECReachNetwork[RECReachNetwork$Catchment == CurrentCatchment,]
-  #OutletReach <- CurrentCatchmentReaches$nzsegment[which.max(CurrentCatchmentReaches$headw_dist)]
-  OutletReach <- CurrentCatchmentReaches$nzsegment[which(CurrentCatchmentReaches$headw_dist > 30000 & CurrentCatchmentReaches$LENGTHDOWN < 500) ]
-  return(data.frame(Catchment = rep(CurrentCatchment,length(OutletReach)),nzsegment = OutletReach))
-})
-#Convert the list into a dataframe
-MajorCatchmentOuteltReachesDF <- do.call(rbind,MajorCatchmentOuteltReaches)
+# CatchmentReaches <- RECReachNetwork %over% MajorCatchments #Note this takes about a minute to do
+# RECReachNetwork$Catchment <- CatchmentReaches$FactSheetZ
+# 
+# #Work through each management zone to find the reach with the greatest distance to the headwater (the hdw_dst attribute). . I tried doing this based on the least largest area (the CUM_ARE attribute) but there were some zero values, I also tried distance to the sea (the LENGTHD attribute, but near the coast I was getting small reaches that were not the main river channel, but were closer to the sea)
+# MajorCatchmentOuteltReaches <- lapply(seq_along(MajorCatchments$FactSheetZ), function(SingleCatchment){
+#   #browser()
+#   CurrentCatchment <- MajorCatchments$FactSheetZ[SingleCatchment]
+#   CurrentCatchmentReaches <- RECReachNetwork[RECReachNetwork$Catchment == CurrentCatchment,]
+#   #OutletReach <- CurrentCatchmentReaches$nzsegment[which.max(CurrentCatchmentReaches$headw_dist)]
+#   OutletReach <- CurrentCatchmentReaches$nzsegment[which(CurrentCatchmentReaches$headw_dist > 30000 & CurrentCatchmentReaches$LENGTHDOWN < 500) ]
+#   return(data.frame(Catchment = rep(CurrentCatchment,length(OutletReach)),nzsegment = OutletReach))
+# })
+# #Convert the list into a dataframe
+# MajorCatchmentOuteltReachesDF <- do.call(rbind,MajorCatchmentOuteltReaches)
 ```
 
 Create a bunch of points that represent reaches of sub-catchment confluences over a certain strahler order.
@@ -372,40 +380,80 @@ From the load sites, point source sites, and water management subzones outlets, 
 ```{r}
 #Combine all the points together in a single cohesive data frame
 CombinedPoints <- data.frame(nzsegment = numeric(),Type= character(),Name= character(),Comment=character(), stringsAsFactors = FALSE )
-Temporary <- MeasurementSites@data[,c("nzsegment","sID")]
-names(Temporary)[2] <- "Name"
-Temporary$Type <- "Water quality measurement site"
-Temporary2 <- LakeSites@data[,c("nzsegment","LakeName")]
-names(Temporary2)[2] <- "Name"
-Temporary2$Type <- "Lake"
-Temporary2$Comment <- "Not monitored"
-Temporary2$Comment[LakeSites@data$Monitored] <- "Monitored"
-Temporary3 <- EstuarySitesSpatial@data[,c("nzsegment","Name")]
-Temporary3$Type <- "Estuary"
-Temporary4 <- SubCatchmentConfluencePointsSpatial@data[,c("nzsegment","RiverName","Reason")]
-names(Temporary4)[c(2,3)] <- c("Name","Comment")
-Temporary4$Type <- "Various"
-Temporary5 <- RiverMouthSites@data[,c("nzsegment","River")]
-names(Temporary5)[2] <- "Name"
-Temporary5$Type <- "Rivermouth"
-Temporary6 <- TeAoMaramaSpatial@data[,c("nzsegment","Waterbody")]
-names(Temporary6)[2] <- "Name"
-Temporary6$Type <- "Cultural"
-CombinedPoints <- rbind.fill(CombinedPoints,Temporary,Temporary2,Temporary3,Temporary4,Temporary5,Temporary6)
+
+MeasurementPoints <- MeasurementSites@data[,c("nzsegment","sID")]
+names(MeasurementPoints)[2] <- "Name"
+MeasurementPoints$Type <- "Water quality measurement site"
+
+PointSourceSites <- PointSourcesSpatial@data[,c("nzsegment","Source")]
+names(PointSourceSites)[2] <- "Name"
+
+LakePoints <- LakeSites@data[,c("nzsegment","LakeName")]
+names(LakePoints)[2] <- "Name"
+LakePoints$Type <- "Lake"
+LakePoints$Comment <- "Not monitored"
+LakePoints$Comment[LakeSites@data$Monitored] <- "Monitored"
+
+EstuaryPoints <- EstuarySitesSpatial@data[,c("nzsegment","Name")]
+EstuaryPoints$Type <- "Estuary"
+
+ConfluencePoints <- SubCatchmentConfluencePointsSpatial@data[,c("nzsegment","RiverName","Reason")]
+names(ConfluencePoints)[c(2,3)] <- c("Name","Comment")
+ConfluencePoints$Type <- "Various"
+
+RivermouthPoints <- RiverMouthSites@data[,c("nzsegment","River")]
+names(RivermouthPoints)[2] <- "Name"
+RivermouthPoints$Type <- "Rivermouth"
+
+CulturalPoints <- TeAoMaramaSpatial@data[,c("nzsegment","Waterbody")]
+names(CulturalPoints)[2] <- "Name"
+CulturalPoints$Type <- "Cultural"
+
+CombinedPoints <- rbind.fill(CombinedPoints,MeasurementPoints,PointSourceSites,LakePoints,EstuaryPoints,ConfluencePoints,RivermouthPoints,CulturalPoints)
 #Add Water management class to it
 CombinedPoints$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(CombinedPoints$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
 write.table(CombinedPoints,file.path(DataDirectory,"CombinedAssessmentPoints.csv"),sep=",",row.names = FALSE)
 
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
-AllPoints <- c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment, SubCatchmentConfluencePointsSpatial$nzsegment, OutletReaches = RiverMouthSites$nzsegment, PointSources = PointSourcesSpatial@data$nzsegment, TeAoMarama = TeAoMaramaSpatial@data$nzsegment)
+AllPoints <- CombinedPoints$nzsegment
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
 CompleteNetwork <- as.numeric(CompleteNetwork)
 
 CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% CompleteNetwork,]
+
 ```
+
+I need to name the reach segments to match the real world names.
+Some can be looked up, but these will need to be manually checked.
+The rest need to be manually named.
+```{r}
+#Name as much as possible from the LINZ river naming spatial data sets
+NamedCompleteSpatialNetwork <- RECReachNamer(RECV2Network = CompleteSpatialNetwork)
+
+#Talk amongst yourselves while this layer is manually checked in QGIS
+#st_write(NamedCompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetworkForNaming", driver="ESRI Shapefile",overwrite_layer=TRUE)
+
+#Load in the csv file with a direct nzsegment-to-name relationship (manually prepared!)
+ExtraRECReachLabels <- read.table(ExtraRECReachLabelsFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
+
+#Use this to update the names
+NamedCompleteSpatialNetwork$name[match(ExtraRECReachLabels$nzsegment,NamedCompleteSpatialNetwork$nzsegment)] <- ExtraRECReachLabels$name
+
+#Use the estuary sites list to update any reaches that don't already have a name (useful for all the outlet reaches)
+#Find which of the estuary reach numbers need updating
+EstuaryReachesToBeUpdated <- which(NamedCompleteSpatialNetwork$nzsegment %in% EstuarySites$nzsegment & NamedCompleteSpatialNetwork$name %in% c("TBC",NA))
+#Then update them
+NamedCompleteSpatialNetwork$name[EstuaryReachesToBeUpdated] <- EstuarySites$Name[match(NamedCompleteSpatialNetwork$nzsegment[EstuaryReachesToBeUpdated],EstuarySites$nzsegment)]
+
+#Name all remaining reaches by checking  the name immediately downstream or by getting manual input
+NetworkLabelList <- NetworkNamer(RECNetwork = NamedCompleteSpatialNetwork)
+
+```
+
+
 
 By request of Ton.
 
@@ -512,21 +560,28 @@ Then create a tributary table ready for CASM
 **** This needs an Outlet Reach Name lookup table to be manually prepared ****
 ```{r}
 
-NetworkLabelList <- NetworkLabeler(CompleteSpatialNetwork)
-
-
 #Add the tributary labels to the network
 SegmentToLabelLookUpTable <- do.call(rbind,NetworkLabelList)
-CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$Label[match(CompleteSpatialNetwork@data$nzsegment,SegmentToLabelLookUpTable$nzsgmnt)]
-#Add the prefixed labels to the network
-SegmentToPrefixedLabelLookUpTable <- ReachLabeler(NetworkLabelList, OutletReachNames)
-CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsegment,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
+CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$name[match(CompleteSpatialNetwork@data$nzsegment,SegmentToLabelLookUpTable$nzsegment)]
 
-#Add the 
+#add the Southland freshwater management unit name
+CompleteSpatialNetwork$FMU <- unlist(CompleteSpatialNetwork %over% MajorCatchments)
+
+#add the CASM "basin"/model domain
+CASMBasinLookupTable <- read.table(CASMBasinLookupTableFile,sep=",",stringsAsFactors = FALSE, header = TRUE)
+CompleteSpatialNetwork@data$CASMBasin <- CASMBasinLookupTable$CASM_Basin[match(CompleteSpatialNetwork$FMU,CASMBasinLookupTable$SouthlandFMU)]
+
+#Add the prefixed labels to the network
+#SegmentToPrefixedLabelLookUpTable <- ReachLabeler(NetworkLabelList, OutletReachNames)
+#CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsegment,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
+
 #Save the network as a spatial file
-writeOGR(CompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetwork", driver="ESRI Shapefile",overwrite_layer=TRUE)
+writeOGR(CompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetwork-named", driver="ESRI Shapefile",overwrite_layer=TRUE)
 
 TributaryConnectionTable <- TributaryConnectionCreator(RECNetwork = CompleteSpatialNetwork, TributaryLabelList = NetworkLabelList)
+
+#Add the CASM Basin details
+TributaryConnectionTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(TributaryConnectionTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 ```
 
 Then create a point source table ready for CASM,
@@ -534,19 +589,27 @@ a measurement site table ready for CASM,
 and a diffuse inputs table ready for CASM
 ```{r}
 #Create a dataframe of just the nzsegment number and the site name
-PointSourceNodes <- PointSourceSites[,c("Site.Name","nzsegment")]
+PointSourceNodes <- PointSourcesSpatial@data[,c("Source","nzsegment")]
 
 #Standardise the column names so that it matches the expected format in the CASMNodeTablePreparer() function
-names(PointSourceNodes) <- c("NodeName","nzsgmnt")
+names(PointSourceNodes) <- c("NodeName","nzsegment")
 
 #Prepare the CASM table with the bonus nzsegment column
 PointSourceTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes = PointSourceNodes )
 
 #rename the columns to match the CASM requirements
-names(PointSourceTable) <- c("nzsgmnt","Point Source Name","Receiving Stream","Location (km)")
+names(PointSourceTable) <- c("nzsegment","Point Source Name","Receiving Stream","Location (km)")
  
 #Need to add the point source load to the table
-PointSourceTable$"Annual Load (kg/yr)" <- round(PointSourceSites$TN.kgpy[match(PointSourceTable$nzsgmnt,PointSourceSites$nzsegment)],0)
+PointSourceTable$"N Annual Load (kg/yr)" <- round(PointSourcesSpatial$TN__t_y_[match(PointSourceTable$nzsegment,PointSourcesSpatial$nzsegment)]*1000,0)
+PointSourceTable$"P Annual Load (kg/yr)" <- round(PointSourcesSpatial$TP__t_y_[match(PointSourceTable$nzsegment,PointSourcesSpatial$nzsegment)]*1000,0)
+
+#Make the NA values 0
+PointSourceTable$"N Annual Load (kg/yr)"[is.na(PointSourceTable$"N Annual Load (kg/yr)")] <- 0
+PointSourceTable$"P Annual Load (kg/yr)"[is.na(PointSourceTable$"P Annual Load (kg/yr)")] <- 0
+
+#Add the CASM Basin details
+PointSourceTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(PointSourceTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 ```
 
 
@@ -554,20 +617,47 @@ PointSourceTable$"Annual Load (kg/yr)" <- round(PointSourceSites$TN.kgpy[match(P
 #Repeat for the measurement sites
 ```{r}
 MeasurementSiteNodes <- MeasurementSites[,c("sID","nzsegment")]
-names(MeasurementSiteNodes) <- c("NodeName","nzsgmnt")
+names(MeasurementSiteNodes) <- c("NodeName","nzsegment")
 MeasurementSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes= MeasurementSiteNodes)
 
 #rename the columns to match the CASM conventions
-names(MeasurementSiteTable) <- c("nzsgmnt","Site Name or No","Target Stream","Downstream Location (km)")
+names(MeasurementSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
 
 #Add the mean annual flow to the table
-MeasurementSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsgmnt, REC2MeanFlow$nzsegment)],1)
+MeasurementSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
+
+#Add the CASM Basin details
+MeasurementSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(MeasurementSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 
 #Add a variety of other fields from the Measurement Site data
-MeasurementSiteTable$'Load (kg/yr)' <- round(MeasurementSites$load[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'Load Lci (kg/yr)' <- round(MeasurementSites$load_Lci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'Load Uci (kg/yr)' <- round(MeasurementSites$load_Uci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'Load (kg/yr)' <- round(MeasurementSites$load[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'Load Lci (kg/yr)' <- round(MeasurementSites$load_Lci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'Load Uci (kg/yr)' <- round(MeasurementSites$load_Uci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
 ```
+
+#Repeat for all assessment points (except the measurement points that have already been done)
+```{r}
+AssessmentSites <- CombinedPoints[!CombinedPoints$Type %in% c(NA,"Water quality measurement site"),]
+
+AssessmentSiteNodes <- AssessmentSites[,c("Name","nzsegment","Type","Comment")]
+names(AssessmentSiteNodes)[1] <- "NodeName"
+#Any sites missing names, use their river reach names
+AssessmentSiteNodes$NodeName[is.na(AssessmentSiteNodes$NodeName)] <- CompleteSpatialNetwork$Label[match(AssessmentSiteNodes$nzsegment[is.na(AssessmentSiteNodes$NodeName)],CompleteSpatialNetwork$nzsegment)]
+#Any "unnamed" lakes name with the Lake ID
+AssessmentSiteNodes$NodeName[AssessmentSiteNodes$NodeName=="unnamed"] <- paste("LakeID: ",LakeSites$LID[match(AssessmentSiteNodes$nzsegment[AssessmentSiteNodes$NodeName=="unnamed"],LakeSites$nzsegment)])
+
+AssessmentSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes= AssessmentSiteNodes)
+
+#rename the columns to match the CASM conventions
+names(AssessmentSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
+
+#Add the mean annual flow to the table
+AssessmentSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(AssessmentSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
+
+#Add the CASM Basin details
+AssessmentSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(AssessmentSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
+```
+
 
 #Repeat for diffuse inputs. This is a special case, because once the points have been found, they need to be joined with all the different landuse/LUC options
 ```{r}
@@ -626,10 +716,11 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 
 #Just get the network needed for the map. For REC3, the headw_dist divisor is 2000, for RECV2 it is 200, so need to edit this.
 #RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/100 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
-RECForMaps <- RECReachNetwork[(RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+#RECForMaps <- RECReachNetwork[(RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
+RECForMaps <- CompleteSpatialNetwork
 RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
 
-RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan")]
+RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan","Label")]
 RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
 RECForMaps <- ms_simplify(RECForMaps)
 
@@ -779,7 +870,7 @@ map <- map %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
-  addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
+  addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network",label = ~Label) %>%
   
   addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Cultural","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
@@ -813,20 +904,24 @@ Out <- createWorkbook()
 
 addWorksheet(Out, "River Network")
 
-writeData(Out, sheet = "River Network", x = TributaryConnectionTable[c("Tributary Name","Confluence Stream","Confluence Location (km)")])
+writeData(Out, sheet = "River Network", x = TributaryConnectionTable)
 
 addWorksheet(Out, "Point Source")
 
-writeData(Out, sheet = "Point Source", x = PointSourceTable[,-1])
+writeData(Out, sheet = "Point Source", x = PointSourceTable)
 
 addWorksheet(Out, "Water Quality Stations")
 
-writeData(Out, sheet = "Water Quality Stations", x = MeasurementSiteTable[,-1])
+writeData(Out, sheet = "Water Quality Stations", x = MeasurementSiteTable)
 
-addWorksheet(Out, "Diffuse Inputs")
+addWorksheet(Out, "Assessment Points")
+
+writeData(Out, sheet = "Assessment Points", x = AssessmentSiteTable)
+
+#addWorksheet(Out, "Diffuse Inputs")
 
 
-writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","Export Coeff (kg/ha/yr)")])
+#writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","Export Coeff (kg/ha/yr)")])
 
 saveWorkbook(Out, file.path(DataDirectory,"CASM-Inputs.xlsx"), overwrite = T)
 ```
