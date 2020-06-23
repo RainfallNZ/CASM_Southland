@@ -8,6 +8,7 @@ library(grDevices)
 MapData <- readRDS("Data/SpatialData.RDS")
 #map <- readRDS("Data/map.RDS")
 
+
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
          MapData$MeasurementSites@data[i, "SiteDescription"]) 
@@ -142,7 +143,7 @@ map <- map %>%
   addCircleMarkers(data = MapData$RiverMouthSites, color = "brown", fillOpacity = 0.5,label = lapply(RiverMouthSiteLabels, htmltools::HTML)) %>%
   addCircleMarkers(data = MapData$SubCatchmentSites, color = "#0066CC", fillOpacity = 0.5,label = lapply(SubCatchmentSites, htmltools::HTML)) %>%
   
-  addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network") %>%
+  addPolylines(data = MapData$RiverNetwork, color= "blue", weight = ~LineWidthPixels,group = "River Network",label = ~Label) %>%
   
   addLegend("topright", colors = c("#61ba46","#FF3333","darkorange","yellow","turquoise","brown","lightblue"), labels = c("Cultural","RWQ","Lake-Monitored","Lake-not monitored","Estuary","River Mouth","Subcatchment"),
             title = "Assessment point<br>locations",
