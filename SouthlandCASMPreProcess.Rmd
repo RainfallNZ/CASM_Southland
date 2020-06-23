@@ -73,6 +73,7 @@ PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250
 #Set the names of some text tables in csv format
 LakeSiteFile            <- file.path(DataDirectory,"Lakes_ToIncludeAsAssessmentPoints.csv")
 WaterQualityStationFile <- file.path(DataDirectory,"WQStationLocations_May2020.csv")
+WaterQualityDataFile    <-file.path(DataDirectory,"WaterQualityStationLoadConcData.csv")
 #OutletReachNamesFile   <- "OutletReachNames.csv"
 EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
@@ -190,6 +191,16 @@ MeasurementSites <- SpatialPointsDataFrame(coords = MeasurementSites[,c("downcoo
 MeasurementSites$nzsegment <- as.numeric(MeasurementSites$nzsegment)
 #Remove any duplicate sites
 MeasurementSites <- MeasurementSites[!duplicated(MeasurementSites$nzsegment),]
+#Add the TN and TP data
+MeasurementSiteData <- read.table(WaterQualityDataFile, sep=",",stringsAsFactors = FALSE, header = TRUE)
+TNData <- MeasurementSiteData[MeasurementSiteData$npID=="TN",]
+MeasurementSites$'TN Load(kg/yr)'     <- TNData$ExpCoeff[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)] / 10000
+MeasurementSites$'TN Load Lci(kg/yr)' <- TNData$ExpCoeff_Lci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+MeasurementSites$'TN Load Uci(kg/yr)' <- TNData$ExpCoeff_Uci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+TPData <- MeasurementSiteData[MeasurementSiteData$npID=="TP",]
+MeasurementSites$'TP Load(kg/yr)'     <- TPData$ExpCoeff[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+MeasurementSites$'TP Load Lci(kg/yr)' <- TPData$ExpCoeff_Lci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+MeasurementSites$'TP Load Uci(kg/yr)' <- TPData$ExpCoeff_Uci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
 
 #Load lake sites of interest
 LakeSites  <- read.table(LakeSiteFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
@@ -311,30 +322,34 @@ Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
 
 
 ```
-
-
-The following was used to help identify outlet reaches of importance. Subjective selection proved to be a better option.
-Identify the lowest reach in each subcatchment for Strahler order 4 and up, and create a point at its lowest node
-
-
-Not sure if the following is needed anymore.
-Get the "nzsegment" attributes of the lowest reach in each of the major catchments
+"Correct"the Waiau flows below Manapouri to account for most of the water going out to Doubtful Sound throught he power scheme.
+Mean annual flow at the Manapouri outlet should be 69 m3s-1 (according to Ton, see email from Ton to Tim Cox cc Tim Kerr on 3 June 2020 at 7:53 am subject Re: FW: Nohoanga site shape file )
 ```{r}
-# CatchmentReaches <- RECReachNetwork %over% MajorCatchments #Note this takes about a minute to do
-# RECReachNetwork$Catchment <- CatchmentReaches$FactSheetZ
-# 
-# #Work through each management zone to find the reach with the greatest distance to the headwater (the hdw_dst attribute). . I tried doing this based on the least largest area (the CUM_ARE attribute) but there were some zero values, I also tried distance to the sea (the LENGTHD attribute, but near the coast I was getting small reaches that were not the main river channel, but were closer to the sea)
-# MajorCatchmentOuteltReaches <- lapply(seq_along(MajorCatchments$FactSheetZ), function(SingleCatchment){
-#   #browser()
-#   CurrentCatchment <- MajorCatchments$FactSheetZ[SingleCatchment]
-#   CurrentCatchmentReaches <- RECReachNetwork[RECReachNetwork$Catchment == CurrentCatchment,]
-#   #OutletReach <- CurrentCatchmentReaches$nzsegment[which.max(CurrentCatchmentReaches$headw_dist)]
-#   OutletReach <- CurrentCatchmentReaches$nzsegment[which(CurrentCatchmentReaches$headw_dist > 30000 & CurrentCatchmentReaches$LENGTHDOWN < 500) ]
-#   return(data.frame(Catchment = rep(CurrentCatchment,length(OutletReach)),nzsegment = OutletReach))
-# })
-# #Convert the list into a dataframe
-# MajorCatchmentOuteltReachesDF <- do.call(rbind,MajorCatchmentOuteltReaches)
+ManapouriOutlet <- 15266022
+OutletFlow<- 69 #m3s-1
+#Get all the mainstem reach numbers down the Waiau from the  Lake Manapouri outlet
+nextReach <- ManapouriOutlet
+MainstemReaches <- c(ManapouriOutlet)
+while (length(nextReach) == 1){
+  nextReach <- RECReachNetwork$nzsegment[which(RECReachNetwork$FROM_NODE == RECReachNetwork$TO_NODE[RECReachNetwork$nzsegment == nextReach])]
+  MainstemReaches <- c(MainstemReaches,nextReach)
+}
+#Find all the reaches that share a TO_NODE with any of the mainstem reaches
+JunctionReaches <- RECReachNetwork$nzsegment[which(RECReachNetwork$TO_NODE %in% RECReachNetwork$TO_NODE[RECReachNetwork$nzsegment %in% MainstemReaches])]
+#Remove any that are in the mainstem
+TributaryReaches <- JunctionReaches[!JunctionReaches %in% MainstemReaches]
+
+#Starting from the top, meanflow is 69 m3s-1, then 69 + first trib, then 69 + next two tribs etc
+upstreamflow <- 0
+flow <- OutletFlow
+Mainstemflow <- c(OutletFlow)
+for(reachIndex in seq(1,length(MainstemReaches))){
+  flow <- flow + REC2MeanFlow$QMean[which(REC2MeanFlow$nzsegment==TributaryReaches[reachIndex])]
+  Mainstemflow <- c(Mainstemflow,flow)
+}
+WaiauFlowCorrection <- data.frame(nzsegment = MainstemReaches, QMean = Mainstemflow)
 ```
+
 
 Create a bunch of points that represent reaches of sub-catchment confluences over a certain strahler order.
 ```{r}
@@ -626,13 +641,21 @@ names(MeasurementSiteTable) <- c("nzsegment","Site Name or No","Target Stream","
 #Add the mean annual flow to the table
 MeasurementSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
 
+#Correct the Waiau flows for Manapori operation
+WaiauIndices <- which(MeasurementSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
+MeasurementSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(MeasurementSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
+
 #Add the CASM Basin details
 MeasurementSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(MeasurementSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 
 #Add a variety of other fields from the Measurement Site data
-#MeasurementSiteTable$'Load (kg/yr)' <- round(MeasurementSites$load[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-#MeasurementSiteTable$'Load Lci (kg/yr)' <- round(MeasurementSites$load_Lci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-#MeasurementSiteTable$'Load Uci (kg/yr)' <- round(MeasurementSites$load_Uci[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+MeasurementSiteTable$'TN Load (kg/yr)'     <- round(MeasurementSites$'TN Load(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+MeasurementSiteTable$'TN Load Lci (kg/yr)' <- round(MeasurementSites$'TN Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+MeasurementSiteTable$'TN Load Uci (kg/yr)' <- round(MeasurementSites$'TN Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+
+MeasurementSiteTable$'TP Load (kg/yr)'     <- round(MeasurementSites$'TP Load(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+MeasurementSiteTable$'TP Load Lci (kg/yr)' <- round(MeasurementSites$'TP Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+MeasurementSiteTable$'TP Load Uci (kg/yr)' <- round(MeasurementSites$'TP Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
 ```
 
 #Repeat for all assessment points (except the measurement points that have already been done)
@@ -653,6 +676,10 @@ names(AssessmentSiteTable) <- c("nzsegment","Site Name or No","Target Stream","D
 
 #Add the mean annual flow to the table
 AssessmentSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(AssessmentSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
+
+#Update with the modified Waiau flows
+WaiauIndices <- which(AssessmentSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
+AssessmentSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(AssessmentSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
 
 #Add the CASM Basin details
 AssessmentSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(AssessmentSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
@@ -925,81 +952,3 @@ writeData(Out, sheet = "Assessment Points", x = AssessmentSiteTable)
 
 saveWorkbook(Out, file.path(DataDirectory,"CASM-Inputs.xlsx"), overwrite = T)
 ```
- By way of a check, it will be helpful to compare the total sub-management zone loads from the gridded leachrate data with the total sub-management zone loads from the zone/landuse/LUC data.
- Start with the leach rate raster data, and get the average leachrate for each zone and multiply by the area.
- Note that  I need to use the subzones from the SubZone
- 
- Then, as a check, get the load for each zone-landuse-LUC combination, and sum in each zone.
- It would also be good to add a check of total load in catchments upstream of a water quality network being more than the total load measured. If they were less, then the attenuation would have to be greater than 1!
-```{r}
-#Note that to ensure I am comparing apples with apples, I am using the SubZoneLandUseLUCSpatial data to find the SubZone areas (rather than using the pre-prepared cleaned sub zone spatial data which has been "cleaned" so is slightly different in area!!)
-test <- unionSpatialPolygons(SubZoneLanduseLUCSpatial,IDs = SubZoneLanduseLUCSpatial@data$Zone_Code )
-testid <- sapply(slot(test, "polygons"), function(x) slot(x, "ID"))
-test2 <- SpatialPolygonsDataFrame(test,data.frame(Zone_Code = testid,row.names = testid))
-
-Zoneleachrates <- raster::extract(LeachRate, test2, fun = mean, na.rm=TRUE, sp=TRUE, weights = TRUE)
-Zoneleachrates$area <- raster::area(Zoneleachrates)
-Zoneleachrates$loads <- with(Zoneleachrates@data,layer * area / 10000)
-
-DiffuseInputsSiteExtendedTable$load <- DiffuseInputsSiteExtendedTable$`Export Coeff (kg/ha/yr)` * DiffuseInputsSiteExtendedTable$`Land Area (ha)`
-library(plyr)
-bob <- ddply(DiffuseInputsSiteExtendedTable, "Zone_Code", function(x) sum(x$load, na.rm=TRUE))
-
-ddply(DiffuseInputsSiteExtendedTable, "Zone_Code", function(x) sum(x$'Land Area (ha)', na.rm=TRUE))
-
-#Ideally the loads from the raster and the DiffuseinputsSiteExtendedTable would be the same, but they are not!!
-#But they are close for most water management sub-zones
-charlie <- cbind(Zoneleachrates@data,bob)
-charlie$load_diff <- charlie$loads - charlie$V1
-charlie$load_diff_percent <- round(charlie$load_diff / charlie$loads * 100,0)
-print(charlie)
-```
- 
-
-```{r}
-# NOT RUN {
-# !formatR
-library(leaflet)
-# a manual legend
-leaflet() %>% addTiles() %>% addLegend(
-  position = "bottomright",
-  colors = rgb(t(col2rgb(palette())) / 255),
-  labels = palette(), opacity = 1,
-  title = "An Obvious Legend"
-)
-
-# }
-# NOT RUN {
-# an automatic legend derived from the color palette
-df <- local({
-  n <- 300; x <- rnorm(n); y <- rnorm(n)
-  z <- sqrt(x ^ 2 + y ^ 2); z[sample(n, 10)] <- NA
-  data.frame(x, y, z)
-})
-pal <- colorNumeric("OrRd", df$z)
-leaflet(df) %>%
-  addTiles() %>%
-  addCircleMarkers(~x, ~y, color = ~pal(z), group = "circles") %>%
-  addLegend(pal = pal, values = ~z, group = "circles", position = "bottomleft") %>%
-  addLayersControl(overlayGroups = c("circles"))
-
-# format legend labels
-df <- data.frame(x = rnorm(100), y = rexp(100, 2), z = runif(100))
-pal <- colorBin("PuOr", df$z, bins = c(0, .1, .4, .9, 1))
-leaflet(df) %>%
-  addTiles() %>%
-  addCircleMarkers(~x, ~y, color = ~pal(z), group = "circles") %>%
-  addLegend(pal = pal, values = ~z, group = "circles", position = "bottomleft") %>%
-  addLayersControl(overlayGroups = c("circles"))
-
-leaflet(df) %>%
-  addTiles() %>%
-  addCircleMarkers(~x, ~y, color = ~pal(z), group = "circles") %>%
-  addLegend(pal = pal, values = ~z, labFormat = labelFormat(
-    prefix = "(", suffix = ")%", between = ", ",
-    transform = function(x) 100 * x
-  ),  group = "circles", position = "bottomleft" ) %>%
-  addLayersControl(overlayGroups = c("circles"))
-# }
-```
-
