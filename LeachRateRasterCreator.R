@@ -1,4 +1,4 @@
-#' A function to combine spatial data sources of land use, soil drainage, slope and precipiation/irrigation, and uses them to lookup leach rates based on an Environment Southland designation.
+#' A function to combine spatial data sources of land use, soil drainage, slope and precipitation/irrigation, and uses them to lookup leach rates based on an Environment Southland designation.
 #'
 #'This function generates a raster object of leach rates
 #'

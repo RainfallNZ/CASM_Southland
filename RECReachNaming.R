@@ -411,4 +411,141 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
   return(CASMNodeTable)
 }
 
+#' A function to create independent CASM node catchments
+#'
+#'This function generates a spatial file of catchment areas uniquely associated with each reach in a vector
+#'
+#'@param RECWatersheds An REC V2 watershed spatial object that wholly encompases the area of interest
+#'@param RECNetwork The REC V2 network data that wholly encompases the area of interest and includes at least the nzsegment, TO_NODE and FROM_NODE attributes
+#'@param CASMNodes A dataframe of node names and REC V2 reach number (i.e. nzsegment attribute) of the nodes for which the CASM table is to be prepared
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A Simple Feature spatial object of polygons with associated nzsegment attribute from its related CASMNode
+#'@keywords REC River Environment Classification CASM
+#'@export
+CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork = RECReachNetwork@data, CASMNodes = c(15308687,15305100,15309794)){
+  
+  if (!require(tidyr)) install.packages('tidyr'); library(tidyr)  #needed for the drop_na() function
+  
+  #Get the individual watershed for each CASM Node
+  NodeWatersheds <- RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),]
+  #Get the entire catchment for each node
+  CompleteCatchments <- lapply(CASMNodes, function(CASMNode){
+    #browser()
+    CatchmentReaches <- CASMNode
+    Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE == RECNetwork$FROM_NODE[RECNetwork$nzsegment == CASMNode])]
+    while(length(Upstreamreaches) > 0){
+      CatchmentReaches <- c(CatchmentReaches,Upstreamreaches)
+      Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE %in% RECNetwork$FROM_NODE[RECNetwork$nzsegment %in% Upstreamreaches])]
+    }
+    NodeCatchment <- st_union(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),])
+    return(NodeCatchment)
+  })
+  
+  #Figure out which part of the catchment is associated with the node, excluding upstream node catchments.
+  IntersectedCatchments <- CompleteCatchments %>% do.call(c,.) %>% #Combined the node catchments into one spatial object
+    st_intersection() %>%                                          #intersect them so the catchments are not nested. This is sort of like generating watersheds for just the reaches of interest
+    st_collection_extract(type = "POLYGON") %>%                    #just select the polygons. The intersection can also generate linestrings which are not wanted.
+    st_as_sf() %>%                                                 #Turn back into a "Simple Feature"object
+    st_join(.,NodeWatersheds[,"nzsegment"],join=st_contains) %>%   #spatial join to the original Node watershed to get the nzsegment number
+    drop_na(nzsegment)
+  
+  return(IntersectedCatchments)
+}
 
+
+#' A function to combine spatial data sources of land use, and diffuse source areas.
+#'
+#'This function generates a raster object of Diffuse source areas subclassified by landuse
+#'
+#'@param LanduseData A raster of landuse data
+#'@param DiffuseSourceAreas A spatial object of the areas to be intersected with the land use
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A raster object of leach rates
+#'@keywords Water Quality, CASM, leach
+#'@export
+LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
+                                   DiffuseSourceAreas=DiffuseSourceAreaSpatialObject){
+  
+  if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
+  if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+  if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
+
+
+  #rasterize the diffuse source area spatial data, aligning to the Landuse data
+  DiffuseSourceRaster <- rasterize(DiffuseSourceAreas, LanduseData, "nzsegment")
+  
+  #Calculate a new raster by adding the nzsegment value to a tenth of the landuse class.
+  #This leads to 88888888888.1, 888888888.2 etc
+
+  #Create a raster brick with all the parameters needed to determine the leach rate from the look up table
+  PredictorRasters <- brick(LanduseRaster,SoilDrainageRaster,SlopeClassRaster,PrecipIrrigRaster)
+  names(PredictorRasters) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
+  #Mask the raster brick to just the Southland FMU areas as given in the PrecipIrrig polygon layer.
+  PredictorRasters <- rasterize(x=PrecipIrrigSpatial,y=PredictorRasters,mask=TRUE)
+  
+  #Figure out the leachrates for each of the leach rate types
+  LeachTypes <- c("N.loss.(mean)","N.loss.(median)","P.loss.(mean)","P.loss.(median)")
+  LeachRateRasters <- lapply(LeachTypes, function(LeachType){
+    
+    #Use "calc" to work through each x,y cell of the raster brick and select the appropriate leach rate
+    LeachRateRaster <- calc(PredictorRasters, function(x) {
+      #browser()
+      #Concatenate the predictor values of the current x,y, cell
+      CriteriaToLookup <- paste(x,collapse=" ")
+      #if(all(complete.cases(x))) browser()
+      #lookup the current cell's predictor string in the look up table
+      LeachRate <- LeachRateLookUpTable[LeachRateLookUpTable$CombinedClasses %in% CriteriaToLookup,LeachType]
+      
+      #Catch any missing values and make them NA
+      if(length(LeachRate) == 0) LeachRate <- NA
+      
+      return(LeachRate)
+    })
+    return(LeachRateRaster)
+  })
+  
+  names(LeachRateRasters) <- LeachTypes
+  
+  #Stick all the rasters together as a stack
+  OutputRasterStack <- stack(brick(LeachRateRasters),PredictorRasters)
+  
+  return(OutputRasterStack)
+}
+
+
+#' A function to load the physiographic data and reproject it to WGS84.
+#'
+#'This function generates a raster object of the physiographic data
+#'
+#'@param SourceFile A ESRI polygon shapefile of the physiographic data
+#'@param Domain A spatial object of the domain withon which to limit the raster
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A raster object of physiography in WGS84
+#'@keywords physiography, southland
+#'@export
+CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = CompleteDomain){
+  #Load the physiography spatial polygon data
+  Physiography <- readOGR(SourceFile)
+  
+  #Explicitly set the projection to NZTM
+  Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+  
+  #Convert to a raster with an attribute table, and  for mapping later on
+  #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
+  RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
+  PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
+  #Crop to the Complete domain, and then mask to the same
+  PhysiographyRaster <- crop(PhysiographyRaster,extent(Domain))
+  PhysiographyRaster <- mask(PhysiographyRaster, Domain)
+  
+  #Note, for the next line I have had issues with repeated errors of "Error in x$.self$finalize() : attempt to apply non-function"
+  #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
+  #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
+  
+  PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+  PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
+  PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
+  PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
+  levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
+  return(PhysiographyRasterWGS84)
+}

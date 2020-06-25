@@ -9,6 +9,7 @@ if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #u
 if (!require(ggplot2)) install.packages("ggplot2"); library(ggplot2)                #used for plotting
 if (!require(gridExtra)) install.packages("gridExtra"); library(gridExtra)                #Used for plotting multiple plots to output
 if (!require(plyr)) install.packages("plyr"); library(plyr)                #used for the join function
+if (!require(dplyr)) install.packages("dplyr"); library(dplyr)                #used for the rename function
 if (!require(knitr)) install.packages("knitr"); library(knitr)                #used to make nice looking tables
 if (!require(rgeos)) install.packages("rgeos"); library(rgeos)                #used for spatial processing
 if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
@@ -17,6 +18,7 @@ if (!require(rmapshaper)) install.packages("rmapshaper"); library(rmapshaper)   
 if (!require(devtools)) install.packages("devtools"); library(devtools)                #Needed to load libraries from github
 if (!require(tictoc)) install.packages("tictoc"); library(tictoc)                         #used for timing processing
 if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
+  if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
 if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
 source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\RECReachNaming.R")
 
@@ -45,7 +47,8 @@ REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdat
 REC_rivers              <- "ES_REC2V5_Riverlines"
 #Or an REC3 version
 #REC_rivers             <- "ES_REC3_Riverlines"
-#REC_Catchments         <- "ESWaterShedsWithPlanClasses" #An ESRI polygon shape file with Environment Southland Plan Classses
+REC_Catchments         <- file.path(GISDataDirectory,"ES_REC2_Watersheds","ES_REC2_Watersheds.shp") #An ESRI polygon shape file with Environment Southland Plan Classses
+
 
 #WaterQualityStationFile <- "WaterQualitySites" #A Point shape file
 #LakeSiteFile            <- "LakeSites"  #A Point shape file
@@ -56,8 +59,9 @@ RiverOutletsFile        <- "RiverMouthSites" #A Point Shape File
 
 MajorCatchmentsFile     <- "FactsheetZoneAreas"   #A polygon shapefile
 GroundwaterZonesFile    <- "Environment_Southland_Groundwater_Management_Zones_RWP_2010" #AI polygon shapefile
-PhysiographicDataFile   <- "Environment_Southland_Physiographic_Zones" #A polygon shapefile
+PhysiographicDataFile   <- file.path(GISDataDirectory,"Environment_Southland_Physiographic_Zones","Environment_Southland_Physiographic_Zones.shp") #A polygon shapefile
 WaterPlanClassificationFile <- "WaterPlanClassification" #A Shape file
+DiffuseLoadSourceAreasFile <- file.path(GISDataDirectory,"CASMDiffuseLoadSourceAreas","CASMDiffuseLoadSourceAreas.shp")
 
 LanduseShapeFile        <- file.path(GISDataDirectory,"LanduseLayers/LandUse2017/LandUse2017.shp")
 SoilDrainageShapeFile   <- file.path(GISDataDirectory,"LanduseLayers/Soil_drainage/Soil_drainage.shp")
@@ -297,29 +301,33 @@ Load the Physiographic Zones data. This frequently has issues! Best to run it li
 *******************************
 
 ```{r}
-Physiography <- readOGR(dsn =file.path(GISDataDirectory,PhysiographicDataFile),
-                           layer = PhysiographicDataFile)
-Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
 
-#Convert to a raster with an attribute table, and  for mapping later on
-  #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
-  RasterBase <- raster(resolution = 250, ext = extent(MajorCatchments), crs = proj4string(MajorCatchments) )
-  PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
-  #Crop to the Complete domain, and then mask to the same
-  PhysiographyRaster <- crop(PhysiographyRaster,extent(CompleteDomain))
-  PhysiographyRaster <- mask(PhysiographyRaster, CompleteDomain)
-  
-  #Note, for the next line I have had issues with repeated errors of "Error in x$.self$finalize() : attempt to apply non-function"
-  #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
-  #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
-  
-  PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
-  PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
-  PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
-  PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
-  levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
-
-
+# CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = CompleteDomain){
+# #Load the physiography spatial polygon data
+#   Physiography <- readOGR(SourceFile)
+#   
+#   #Explicitly set the projection to NZTM
+# Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+# 
+# #Convert to a raster with an attribute table, and  for mapping later on
+#   #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
+#   RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
+#   PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
+#   #Crop to the Complete domain, and then mask to the same
+#   PhysiographyRaster <- crop(PhysiographyRaster,extent(Domain))
+#   PhysiographyRaster <- mask(PhysiographyRaster, Domain)
+#   
+#   #Note, for the next line I have had issues with repeated errors of "Error in x$.self$finalize() : attempt to apply non-function"
+#   #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
+#   #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
+#   
+#   PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+#   PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
+#   PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
+#   PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
+#   levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
+# return(PhysiographyRasterWGS84)
+# }
 
 ```
 "Correct"the Waiau flows below Manapouri to account for most of the water going out to Doubtful Sound throught he power scheme.
@@ -364,8 +372,8 @@ SubCatchmentConfluencePointsSpatial <- SpatialPointsDataFrame(coords = SubCatchm
                                                               data = SubCatchmentConfluencePoints[,c("nzsegment","Reason")],
                                                               proj4string = CRS("+init=epsg:2193"))
 
-#Remove any points that already exist in the Measurement site, Lake site, Estuary site, or Outlet sites
-SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[which(!SubCatchmentConfluencePointsSpatial$nzsegment %in% c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment,RiverMouthSites$nzsegment)),]
+#Remove any points that already exist in the Measurement site, Lake site, Estuary site, or Outlet site or Te Ao Marama sites
+SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[which(!SubCatchmentConfluencePointsSpatial$nzsegment %in% c(MeasurementSites$nzsegment, LakeSites$nzsegment, EstuarySites$nzsegment,RiverMouthSites$nzsegment,TeAoMaramaSites$nzsegment)),]
 
 #Remove any points that are terminal reaches as they have been manually selected in the "RiverMouthSites"
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!SubCatchmentConfluencePointsSpatial$nzsegment %in% SouthlandREC2Utility$nzsegment[SouthlandREC2Utility$isTerminal],]
@@ -402,6 +410,7 @@ MeasurementPoints$Type <- "Water quality measurement site"
 
 PointSourceSites <- PointSourcesSpatial@data[,c("nzsegment","Source")]
 names(PointSourceSites)[2] <- "Name"
+PointSourceSites$Type <- "Point Source"
 
 LakePoints <- LakeSites@data[,c("nzsegment","LakeName")]
 names(LakePoints)[2] <- "Name"
@@ -425,10 +434,17 @@ names(CulturalPoints)[2] <- "Name"
 CulturalPoints$Type <- "Cultural"
 
 CombinedPoints <- rbind.fill(CombinedPoints,MeasurementPoints,PointSourceSites,LakePoints,EstuaryPoints,ConfluencePoints,RivermouthPoints,CulturalPoints)
+
+#Remove any duplicates (there are three that I know of)
+CombinedPoints <- CombinedPoints[!duplicated(CombinedPoints$nzsegment),]
+
 #Add Water management class to it
 CombinedPoints$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(CombinedPoints$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
-write.table(CombinedPoints,file.path(DataDirectory,"CombinedAssessmentPoints.csv"),sep=",",row.names = FALSE)
+
+#Get just the assessment points and write to a file
+AssessmentPoints <-  CombinedPoints[!CombinedPoints$Type %in% c("Point Source"),]
+write.table(AssessmentPoints,file.path(DataDirectory,"CombinedAssessmentPoints.csv"),sep=",",row.names = FALSE)
 
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
 AllPoints <- CombinedPoints$nzsegment
@@ -660,7 +676,7 @@ MeasurementSiteTable$'TP Load Uci (kg/yr)' <- round(MeasurementSites$'TP Load Uc
 
 #Repeat for all assessment points (except the measurement points that have already been done)
 ```{r}
-AssessmentSites <- CombinedPoints[!CombinedPoints$Type %in% c(NA,"Water quality measurement site"),]
+AssessmentSites <- CombinedPoints[!CombinedPoints$Type %in% c("Point Source","Water quality measurement site"),]
 
 AssessmentSiteNodes <- AssessmentSites[,c("Name","nzsegment","Type","Comment")]
 names(AssessmentSiteNodes)[1] <- "NodeName"
@@ -674,6 +690,9 @@ AssessmentSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNet
 #rename the columns to match the CASM conventions
 names(AssessmentSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
 
+#Update the site name to combine the nzsegment and the existing site name
+AssessmentSiteTable$`Site Name or No` <- paste0(AssessmentSiteTable$`Site Name or No`,"-",AssessmentSiteTable$nzsegment)
+
 #Add the mean annual flow to the table
 AssessmentSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(AssessmentSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
 
@@ -686,45 +705,109 @@ AssessmentSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(Assessme
 ```
 
 
-#Repeat for diffuse inputs. This is a special case, because once the points have been found, they need to be joined with all the different landuse/LUC options
+#Repeat for diffuse inputs. This is a special case, because once the points have been found, they need to be joined with all the different landuse varieties
 ```{r}
-#Start with all the diffuse source input nodes. These are the sub-management zone outlets
-DiffuseInputsSiteNodes <- ManagementSubZoneOutletReachesDF
-names(DiffuseInputsSiteNodes) <- c("NodeName","nzsgmnt")
+DiffuseSites <- CombinedPoints[!CombinedPoints$Type %in% c("Point Source"),]
 
-#Build up the table of tributary names and locations associated with the diffuse source input sites
-DiffuseInputsSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes= DiffuseInputsSiteNodes)
+DiffuseSiteNodes <- DiffuseSites[,c("Name","nzsegment","Type","Comment")]
+names(DiffuseSiteNodes)[1] <- "NodeName"
 
-#Now create a bigger version, with a row for each of the different landuse/LUC combinations within each sub-management zone
-DiffuseInputsSiteExtendedTable <- SubZoneLanduseLUCSpatial@data
+#Any sites missing names, use their river reach names
+DiffuseSiteNodes$NodeName[is.na(DiffuseSiteNodes$NodeName)] <- CompleteSpatialNetwork$Label[match(DiffuseSiteNodes$nzsegment[is.na(DiffuseSiteNodes$NodeName)],CompleteSpatialNetwork$nzsegment)]
 
-#Add the locations that we have just previously determined
-DiffuseInputsSiteExtendedTable[,c("TribLocn","TribName")] <- DiffuseInputsSiteTable[match(SubZoneLanduseLUCSpatial@data$Zone_Code, DiffuseInputsSiteTable$CASMNodeName),c("TribLocn","TribName")]
+#Any "unnamed" lakes name with the Lake ID
+DiffuseSiteNodes$NodeName[DiffuseSiteNodes$NodeName=="unnamed"] <- paste("LakeID: ",LakeSites$LID[match(DiffuseSiteNodes$nzsegment[DiffuseSiteNodes$NodeName=="unnamed"],LakeSites$nzsegment)])
 
-#Add the leach rates
-DiffuseLeachRateData <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = ,LeachRates = LeachRate)
-DiffuseInputsSiteExtendedTable$"LeachRates"<- DiffuseLeachRateData$LeachRate[match(DiffuseInputsSiteExtendedTable$CombinedClassName,DiffuseLeachRateData$CombinedClassName)]
-
-#Need to use raster-calculated area rather than polygon areas
-DiffuseInputsSiteExtendedTable$`RasterBased Land Area (ha)` <- DiffuseLeachRateData$Hectares[match(DiffuseInputsSiteExtendedTable$CombinedClassName,DiffuseLeachRateData$CombinedClassName)]
-#Remove all the surplus combined names. The raster version has much less.
-DiffuseInputsSiteExtendedTable <- DiffuseInputsSiteExtendedTable[complete.cases(DiffuseInputsSiteExtendedTable),]
-
-#I now need to adjust the locations of all the different landuse/LUC options for a single diffuse source point so that they are not all on exactly the same spot.
-#Work along each sub management zone, get all the landuse/LUC classes, and increment the locations by 0.1 km
-DiffuseInputsSiteExtendedTable$AdjustedTriblocn <- DiffuseInputsSiteExtendedTable$TribLocn
-UniqueSubZones <- unique(DiffuseInputsSiteExtendedTable$Zone_Code)
-for(SubZoneIndex in seq_along(UniqueSubZones)) {
-  #get the subzone of interest
-  SubZone <- UniqueSubZones[SubZoneIndex]
-  
-  #Get all the landuse/LUC classes in the subzone
-  RowsOfInterest <- which(DiffuseInputsSiteExtendedTable$Zone_Code == SubZone)
-  DiffuseInputsSiteExtendedTable$AdjustedTriblocn[RowsOfInterest] <- DiffuseInputsSiteExtendedTable$TribLocn[RowsOfInterest] + seq(0,by = 0.01, length.out = length(RowsOfInterest))
-}
+DiffuseSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes= DiffuseSiteNodes)
 
 #rename the columns to match the CASM conventions
-names(DiffuseInputsSiteExtendedTable) <- c("Landuse","LUC","Zone_Code","Polygon Land Area (ha)","Node Name","Original location (km)", "Receiving Stream","Export Coeff (kg/ha/yr)","Land Area (ha)","Discharge Location (km)")
+names(DiffuseSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
+
+#Add the mean annual flow to the table
+DiffuseSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(DiffuseSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
+
+#Update with the modified Waiau flows
+WaiauIndices <- which(DiffuseSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
+DiffuseSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(DiffuseSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
+
+#Add the CASM Basin details
+DiffuseSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(DiffuseSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
+
+#Now it is necesary to prepare the actual diffuse data for the source area of each diffuse source point
+#Load the source areas file if it has been pre-prepared. If it hasn't manually check that it should be. Note that this takes about 15 minutes!
+DiffuseSourceAreasOK <- FALSE
+if(file.exists(DiffuseLoadSourceAreasFile)) {
+  DiffuseLoadSourceAreas <- st_read(DiffuseLoadSourceAreasFile)
+  #Check that it is correct for the current Diffuse points
+  DiffuseSourceAreasOK <- identical(as.integer(sort(unique(DiffuseSiteTable$nzsegment))),as.integer(sort(unique(DiffuseLoadSourceAreas$nzsegment))))
+}
+#If the existing source areas doesn't match the current Diffuse points, or if the file didn't even exist, re-create it
+if (!DiffuseSourceAreasOK) {
+  invisible(readline(prompt="Press [enter] to agree to generation of the Diffuse load source areas. This takes 15 minutes!"))
+  DiffuseLoadSourceAreas <- CASMNodeSourceAreaGenerator(RECWatersheds = RECWatersheds,RECNetwork = RECReachNetwork@data, CASMNodes = DiffuseSiteTable$nzsegment)
+  #Save a copy for later
+  st_write(DiffuseLoadSourceAreas,DiffuseLoadSourceAreasFile, append=FALSE)
+}
+
+#Create an intersection of the Diffuse source area and landuse data by using raster maths.
+#Load the landuse raster data
+LandUseRaster <- stack(PredictorRasterFile)[[1]]
+#While we're here create a lookup table to the landuse classes
+LanduseLUT <- levels(LandUseRaster)[[1]]
+
+#rasterize the diffuse source area spatial data, aligning to the Landuse data
+DiffuseSourceRaster <- rasterize(DiffuseLoadSourceAreas, LandUseRaster, "nzsegment")
+
+#Calculate a new raster by dividing the DiffuseSourceArea by 100000000, then adding the landuse class.
+#This leads to 88888888888088, 888888888088 etc. to represent the unique nzsegment and landuse areas. The last three numbers are the landuse code. The first 8 numbers are the nzsegment. This needs to be an integer to enable generating a raster attribute table.
+DiffuseSourceLanduse <- (DiffuseSourceRaster * 1000) + LandUseRaster
+#Need to add a RAT
+  #Add a raster attribute table which labels the values
+  DiffuseSourceLanduse <- ratify(DiffuseSourceLanduse)
+  rat <- levels(DiffuseSourceLanduse)[[1]]
+  #rat$DiffuseSourceLanduse <- levels(PrecipIrrigSpatial@data$Precip2)
+  levels(DiffuseSourceLanduse) <- rat
+
+#Now need to get the leach rates fr each of the nzsegment-landuse areas.
+#Load the Leachrate Data
+LeachRateRaster <- stack(LeachRateRasterFile)
+#Get the total nitrogen leach rates for each unique combination of source area and land use
+DiffuseLeachRateData <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[2]])
+#rename the leach rate column to be explicitly for total nitrogen (TN)
+DiffuseLeachRateData <-dplyr::rename(DiffuseLeachRateData,TN_LeachRate = LeachRate)
+
+#Add the total phosphate leach rates
+DiffuseLeachRateData$TP_LeachRate <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[4]])$LeachRate
+
+#discombobulate the combined nzsegmentlanduse codes into nzsegment. landuse code and landuse class
+DiffuseLeachRateData$nzsegment <- DiffuseLeachRateData$CombinedClassNameLevel %/% 1000
+DiffuseLeachRateData$landuseCode <- DiffuseLeachRateData$CombinedClassNameLevel %% 1000
+DiffuseLeachRateData$landuse <- LanduseLUT$category[match(DiffuseLeachRateData$landuseCode,LanduseLUT$ID)]
+
+#add in the name of the receiving stream, the discharge location and the node name
+DiffuseLeachRateData <- merge(DiffuseLeachRateData,DiffuseSiteTable)
+
+#Create a node name that includes the nzsegment, the site name and the landuse
+DiffuseLeachRateData$'Node Name' <- paste0(DiffuseLeachRateData$`Site Name or No`,"-",DiffuseLeachRateData$nzsegment,"-",DiffuseLeachRateData$landuse)
+
+#I now need to adjust the locations of all the different landuse options for a single diffuse source point so that they are not all on exactly the same spot.
+#Work along each Diffuse point areas, get all the landuse classes, and increment the locations by 0.1 km
+DiffuseLeachRateData$AdjustedTriblocn <- DiffuseLeachRateData$'Downstream Location (km)'
+UniqueSourceAreas <- unique(DiffuseLeachRateData$CombinedClassNameLevel)
+for(SourceAreaIndex in seq_along(UniqueSourceAreas)) {
+  #get the SourceArea of interest
+  SourceArea <- UniqueSourceAreas[SourceAreaIndex]
+  
+  #Get all the landuse classes in the SourceArea
+  RowsOfInterest <- which(DiffuseLeachRateData$CombinedClassNameLevel == SourceArea)
+  DiffuseLeachRateData$AdjustedTriblocn[RowsOfInterest] <- DiffuseLeachRateData$'Downstream Location (km)'[RowsOfInterest] + seq(0,by = 0.01, length.out = length(RowsOfInterest))
+}
+
+#Copy it all to a new dataframe
+DiffuseInputsSiteExtendedTable <- DiffuseLeachRateData
+
+#rename the columns to match the CASM conventions
+names(DiffuseInputsSiteExtendedTable) <- c("nzsegment","SoureAreaCode","TN Export Coeff (kg/ha/yr)","NoOfRasterCells","Land Area (ha)","TP Export Coeff (kg/ha/yr)","LanduseCode","Landuse","Site Name or No.","Receiving Stream","Original location (km)","Mean flow (m3/s)","CASMBasin","Node Name","Discharge Location (km)")
 
 ```
 
@@ -745,7 +828,7 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 #RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$headw_dist)/100 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
 #RECForMaps <- RECReachNetwork[(RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
 RECForMaps <- CompleteSpatialNetwork
-RECForMaps$LineWidthPixels <- pmax(1,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
+RECForMaps$LineWidthPixels <- pmax(4,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
 
 RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan","Label")]
 RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
@@ -760,6 +843,7 @@ RECForMaps <- ms_simplify(RECForMaps)
 SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial)
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
+if(!exists("PhysiographyRasterWGS84"))PhysiographyRasterWGS84 <- CreatePhysiography(SourceFile = PhysiographicDataFile,Domain = CompleteDomain)
 MapData$Physiography <- PhysiographyRasterWGS84
 #MapData$WaterPlan <- WaterPlanRasterWGS84
 
@@ -908,7 +992,9 @@ map <- map %>%
           options = layersControlOptions(collapsed=FALSE)
           ) %>%
   
-  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones")) %>%
+  
+  addScaleBar(position = "bottomleft", options = scaleBarOptions())
 
 map
 
@@ -945,10 +1031,9 @@ addWorksheet(Out, "Assessment Points")
 
 writeData(Out, sheet = "Assessment Points", x = AssessmentSiteTable)
 
-#addWorksheet(Out, "Diffuse Inputs")
+addWorksheet(Out, "Diffuse Inputs")
 
-
-#writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","Export Coeff (kg/ha/yr)")])
+writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)")])
 
 saveWorkbook(Out, file.path(DataDirectory,"CASM-Inputs.xlsx"), overwrite = T)
 ```
