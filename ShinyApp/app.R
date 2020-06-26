@@ -154,7 +154,9 @@ map <- map %>%
     options = layersControlOptions(collapsed=FALSE)
   ) %>%
   
-  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones"))
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones")) %>%
+  
+  addScaleBar(position = "topleft", options = scaleBarOptions())
 
 map
 

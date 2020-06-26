@@ -49,7 +49,6 @@ REC_rivers              <- "ES_REC2V5_Riverlines"
 #REC_rivers             <- "ES_REC3_Riverlines"
 REC_Catchments         <- file.path(GISDataDirectory,"ES_REC2_Watersheds","ES_REC2_Watersheds.shp") #An ESRI polygon shape file with Environment Southland Plan Classses
 
-
 #WaterQualityStationFile <- "WaterQualitySites" #A Point shape file
 #LakeSiteFile            <- "LakeSites"  #A Point shape file
 LakePolygonFile         <- "NZLRIClip_Lakes" #A polygon shape file
@@ -73,6 +72,7 @@ PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/Precipitati
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRaster 250 x 250.tif")
 PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
+PhysiographyBasedAttenuationEstimatesFile <- file.path(GISDataDirectory,"PhysioAttenuationEstimates 250 x 250.tif")
 
 #Set the names of some text tables in csv format
 LakeSiteFile            <- file.path(DataDirectory,"Lakes_ToIncludeAsAssessmentPoints.csv")
@@ -87,12 +87,12 @@ PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegment
 #TeAoMaramaSitesFile    <- file.path(DataDirectory,"TeAoMaramaSites.csv")
 TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory, "RECV2ReachNameExtras.csv")
-CASMBasinLookupTableFile<- file.path(DataDirectory, "CASMBasinToSoouthlandFMULookupTable.csv")
+CASMBasinLookupTableFile<- file.path(DataDirectory, "CASMBasinToSouthlandFMULookupTable.csv")
 
 
 #Set the names of some Excel workbooks
-LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table - DRAFT.xlsx")
-
+LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
+PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Attenuation Estimates.xlsx")
 
 ```
 
@@ -273,8 +273,6 @@ GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 #Load the leachrate data if it exists
 LeachRateRaster <- stack(LeachRateRasterFile)
 
-#**********Need to select which leach rate we want. CUrrently have a choice of 4.
-
 #**********************************************************
 #If the leach rate raster file is missing or needs to be re-created then use the following:
 #Takes 4 minutes at 250 m
@@ -288,49 +286,30 @@ LeachRateRaster <- stack(LeachRateRasterFile)
 #                                    Resolution = 250)
 # toc()
 # #And save it for nexttime
-# writeRaster(LeachRateRaster[[1:4]],LeachRateRasterFile,overwrite=TRUE)
-# writeRaster(LeachRateRaster[[5:8]],PredictorRasterFile,overwrite=TRUE)
-
-#******************************************************************
-
-```
-
-
-********************************
-Load the Physiographic Zones data. This frequently has issues! Best to run it line by line
-*******************************
-
-```{r}
-
-# CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = CompleteDomain){
-# #Load the physiography spatial polygon data
-#   Physiography <- readOGR(SourceFile)
-#   
-#   #Explicitly set the projection to NZTM
-# Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+# writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
+# writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
 # 
-# #Convert to a raster with an attribute table, and  for mapping later on
-#   #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
-#   RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
-#   PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
-#   #Crop to the Complete domain, and then mask to the same
-#   PhysiographyRaster <- crop(PhysiographyRaster,extent(Domain))
-#   PhysiographyRaster <- mask(PhysiographyRaster, Domain)
-#   
-#   #Note, for the next line I have had issues with repeated errors of "Error in x$.self$finalize() : attempt to apply non-function"
-#   #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
-#   #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
-#   
-#   PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
-#   PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
-#   PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
-#   PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
-#   levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
-# return(PhysiographyRasterWGS84)
-# }
+# #******************************************************************
+
+#Load the Physiography-based attenuation estimates
+PhsioAttenEstRaster <- stack(PhysiographyBasedAttenuationEstimatesFile)
+
+#**********************************************************
+#If the physiography-based attenuation estimates raster file is missing or needs to be re-created then use the following:
+#Takes 4 minutes at 250 m
+# tic()
+# PhsioAttenEstRaster <- CreatePhysiographyAttenuationEstimates(PhysiographicFile = PhysiographicDataFile,
+#                                                    Domain = CompleteDomain, 
+#                                                    AttenuationLookupTable = PhysiographicAttenuationLookupTableFile)
+# toc()
+# #And save it for nexttime
+# writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
+# 
+# #******************************************************************
 
 ```
-"Correct"the Waiau flows below Manapouri to account for most of the water going out to Doubtful Sound throught he power scheme.
+
+"Correct"the Waiau flows below Manapouri to account for most of the water going out to Doubtful Sound through the power scheme.
 Mean annual flow at the Manapouri outlet should be 69 m3s-1 (according to Ton, see email from Ton to Tim Cox cc Tim Kerr on 3 June 2020 at 7:53 am subject Re: FW: Nohoanga site shape file )
 ```{r}
 ManapouriOutlet <- 15266022
@@ -611,6 +590,10 @@ writeOGR(CompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetwor
 
 TributaryConnectionTable <- TributaryConnectionCreator(RECNetwork = CompleteSpatialNetwork, TributaryLabelList = NetworkLabelList)
 
+#************************************
+#Note that the Eglinton location is not calculated correctly, but the result works out OK. This was achieved by messing with the labelling of the reaches.
+
+
 #Add the CASM Basin details
 TributaryConnectionTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(TributaryConnectionTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 ```
@@ -768,16 +751,20 @@ DiffuseSourceLanduse <- (DiffuseSourceRaster * 1000) + LandUseRaster
   #rat$DiffuseSourceLanduse <- levels(PrecipIrrigSpatial@data$Precip2)
   levels(DiffuseSourceLanduse) <- rat
 
-#Now need to get the leach rates fr each of the nzsegment-landuse areas.
+#Now need to get the leach rates for each of the nzsegment-landuse areas.
 #Load the Leachrate Data
 LeachRateRaster <- stack(LeachRateRasterFile)
 #Get the total nitrogen leach rates for each unique combination of source area and land use
-DiffuseLeachRateData <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[2]])
+DiffuseLeachRateData <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[1]])
 #rename the leach rate column to be explicitly for total nitrogen (TN)
 DiffuseLeachRateData <-dplyr::rename(DiffuseLeachRateData,TN_LeachRate = LeachRate)
 
 #Add the total phosphate leach rates
-DiffuseLeachRateData$TP_LeachRate <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[4]])$LeachRate
+DiffuseLeachRateData$TP_LeachRate <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[2]])$LeachRate
+
+#Do the same for the physiography-based attenuation estimates. I can use the same function, but different raster input
+DiffuseLeachRateData$TN_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhysAtten[[1]])$LeachRate
+DiffuseLeachRateData$TP_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhysAtten[[2]])$LeachRate
 
 #discombobulate the combined nzsegmentlanduse codes into nzsegment. landuse code and landuse class
 DiffuseLeachRateData$nzsegment <- DiffuseLeachRateData$CombinedClassNameLevel %/% 1000
@@ -807,7 +794,7 @@ for(SourceAreaIndex in seq_along(UniqueSourceAreas)) {
 DiffuseInputsSiteExtendedTable <- DiffuseLeachRateData
 
 #rename the columns to match the CASM conventions
-names(DiffuseInputsSiteExtendedTable) <- c("nzsegment","SoureAreaCode","TN Export Coeff (kg/ha/yr)","NoOfRasterCells","Land Area (ha)","TP Export Coeff (kg/ha/yr)","LanduseCode","Landuse","Site Name or No.","Receiving Stream","Original location (km)","Mean flow (m3/s)","CASMBasin","Node Name","Discharge Location (km)")
+names(DiffuseInputsSiteExtendedTable) <- c("nzsegment","SoureAreaCode","TN Export Coeff (kg/ha/yr)","NoOfRasterCells","Land Area (ha)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","LanduseCode","Landuse","Site Name or No.","Receiving Stream","Original location (km)","Mean flow (m3/s)","CASMBasin","Node Name","Discharge Location (km)")
 
 ```
 
@@ -994,7 +981,7 @@ map <- map %>%
   
   hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones")) %>%
   
-  addScaleBar(position = "bottomleft", options = scaleBarOptions())
+  addScaleBar(position = "topleft", options = scaleBarOptions())
 
 map
 
@@ -1033,7 +1020,7 @@ writeData(Out, sheet = "Assessment Points", x = AssessmentSiteTable)
 
 addWorksheet(Out, "Diffuse Inputs")
 
-writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)")])
+writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
 saveWorkbook(Out, file.path(DataDirectory,"CASM-Inputs.xlsx"), overwrite = T)
 ```

@@ -518,7 +518,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
 #'This function generates a raster object of the physiographic data
 #'
 #'@param SourceFile A ESRI polygon shapefile of the physiographic data
-#'@param Domain A spatial object of the domain withon which to limit the raster
+#'@param Domain A spatial object of the domain within which to limit the raster
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster object of physiography in WGS84
 #'@keywords physiography, southland
@@ -549,3 +549,53 @@ CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = Compl
   levels(PhysiographyRasterWGS84)  <- PhysiographyRAT
   return(PhysiographyRasterWGS84)
 }
+
+
+#' A function to determine physiographic-based attenuation estimates for diffuse source areas.
+#'
+#'This function calculates the area weighted physiographic-based contaminant attenuation scale factor for diffuse source area-landuse combinations.
+#'
+#'@param PhysiographicFile An ESRI polygon shapefile of the physiographic data.
+#'@param Domain A spatial object of the domain within which to limit the raster
+#'@param AttenuationLookupTable An Excel spreadsheet with two tables that relate the physiographic variant classes to attenuation rates
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A dataframe of three columns, one with Diffuse soure area identifier, the second and third columns with the area weighted physiographic-based attenuation estimates for TN and TP.
+#'@keywords physiography, southland, contaminant, leach
+#'@export
+CreatePhysiographyAttenuationEstimates <- function(PhysiographicFile = PhysiographicDataFile,
+                                                   Domain = CompleteDomain, 
+                                                   AttenuationLookupTable = PhysiographicAttenuationLookupTableFile){
+
+  if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
+  #Load the physiography spatial polygon data
+  Physiography <- readOGR(PhysiographicFile,stringsAsFactors = FALSE)
+  
+  #Explicitly set the projection to NZTM
+  Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+  
+  #Load the lookup table and extricate the TN and TP attenuation rate estimates
+  TNRates <- read.xlsx(AttenuationLookupTable,startRow = 2,rows=c(2:19),cols=c(1:9))
+  TPRates <- read.xlsx(AttenuationLookupTable,startRow = 23,rows=c(23:40),cols=c(1:8))
+  AttenLookupTable <- merge(TNRates[,c("Variant","Relative.N.attenuation.(higher.=.greater.attenuation)")],TPRates[,c("Variant","Relative.P.attenuation.(higher.=.greater.attenuation)")])
+  names(AttenLookupTable) <- c("Variant","TNAttenuation","TPAttenuation")
+  
+  #Use the lookup table to create a Physiographic-based contaminant leach attenuation value
+  Physiography$TNAttenuation <- AttenLookupTable$TNAttenuation[match(Physiography$Variant,AttenLookupTable$Variant)]
+  Physiography$TPAttenuation <- AttenLookupTable$TNAttenuation[match(Physiography$Variant,AttenLookupTable$Variant)]
+  
+  #Convert each to a raster with an attribute table, and  for mapping later on
+  #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
+  RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
+  TNPhysAttenRaster <- rasterize(Physiography,RasterBase,"TNAttenuation")
+  TPPhysAttenRaster <- rasterize(Physiography,RasterBase,"TPAttenuation")
+  
+  #Combine them as a raster stack
+  PhysAtten <- stack(TNPhysAttenRaster,TPPhysAttenRaster)
+  
+  #Crop to the Complete domain, and then mask to the same
+  PhysAtten <- crop(PhysAtten,extent(Domain))
+  PhysAtten <- mask(PhysAtten, Domain)
+  
+  return(PhysAtten)
+}
+

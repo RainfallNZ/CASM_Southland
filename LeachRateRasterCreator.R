@@ -13,6 +13,7 @@
 #'@keywords Water Quality, CASM, leach
 #'@export
 LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
+                                   Domain = CompleteDomain,
                                    SoilDrainageData=SoilDrainageShapeFile,
                                    SlopeClassData=SlopeClassShapeFile,
                                    PrecipIrrig=PrecipIrrigShapeFile,
@@ -30,12 +31,12 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
   
   #Fill in the missing median values for the "All" rows to match the "mean" values
-  LeachRateLookUpTable$`N.loss.(median)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)] <-  LeachRateLookUpTable$`N.loss.(mean)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)]
-  LeachRateLookUpTable$`P.loss.(median)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)] <-  LeachRateLookUpTable$`P.loss.(mean)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)]
+  #LeachRateLookUpTable$`N.loss.(median)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)] <-  LeachRateLookUpTable$`N.loss.(mean)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)]
+  #LeachRateLookUpTable$`P.loss.(median)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)] <-  LeachRateLookUpTable$`P.loss.(mean)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)]
  
   #Expand any "All" rows to have a row for each possible combination
   #Repeat for each of the class types
-  for (ClassColumn in c("Soil.drainage","Slope.Class","Precip.(><1000mm)")){
+  for (ClassColumn in c("Soil.Drainage","Slope","Precipitation")){
     #Find the unique classes 
     UniqueClasses <- unique(LeachRateLookUpTable[,ClassColumn])
     #But don't have "All as a unique class
@@ -66,8 +67,11 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   PrecipIrrigSpatial <- readOGR(PrecipIrrig, stringsAsFactors = TRUE)
 
   #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
-  RasterBase <- raster(resolution = Resolution, ext = extent(PrecipIrrigSpatial), crs = proj4string(PrecipIrrigSpatial) )
+  RasterBase <- raster(resolution = Resolution, ext = extent(Domain), crs = proj4string(Domain) )
   PrecipIrrigRaster <- rasterize(PrecipIrrigSpatial,RasterBase,"Precip2")
+  #Crop to the Complete domain, and then mask to the same
+  PrecipIrrigRaster <- crop(PrecipIrrigRaster,extent(Domain))
+  PrecipIrrigRaster <- mask(PrecipIrrigRaster, Domain)
   #Add a raster attribute table which labels the values
   PrecipIrrigRaster <- ratify(PrecipIrrigRaster)
   rat <- levels(PrecipIrrigRaster)[[1]]
@@ -78,6 +82,8 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   #Load slope classification spatial data
   SlopeClassSpatial <- readOGR(SlopeClassData,stringsAsFactors = TRUE)
   SlopeClassRaster <- rasterize(SlopeClassSpatial, RasterBase, "Slope_clas")
+  SlopeClassRaster <- crop(SlopeClassRaster,extent(Domain))
+  SlopeClassRaster <- mask(SlopeClassRaster, Domain)
   #Add a raster attribute table which labels the values
   SlopeClassRaster <- ratify(SlopeClassRaster)
   rat <- levels(SlopeClassRaster)[[1]]
@@ -88,7 +94,9 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   #Load irrigated land spatial data
   SoilDrainageSpatial <- readOGR(SoilDrainageData,stringsAsFactors = TRUE)
   SoilDrainageRaster <- rasterize(SoilDrainageSpatial, RasterBase, "Drain")
-  #Add a raster attribute table which labels the values
+  SoilDrainageRaster <- crop(SoilDrainageRaster,extent(Domain))
+  SoilDrainageRaster <- mask(SoilDrainageRaster, Domain)
+   #Add a raster attribute table which labels the values
   SoilDrainageRaster <- ratify(SoilDrainageRaster)
   rat <- levels(SoilDrainageRaster)[[1]]
   rat$DrainClass <- levels(SoilDrainageSpatial@data$Drain)
@@ -102,6 +110,8 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   LanduseSpatial@data$EcoClass <- factor(LanduseSpatial@data$EcoClass, levels = levels(LeachRateLookUpTable$Land.Use))
   
   LanduseRaster <- rasterize(LanduseSpatial,RasterBase,"EcoClass")
+  LanduseRaster <- crop(LanduseRaster,extent(Domain))
+  LanduseRaster <- mask(LanduseRaster, Domain)
   #Add a raster attribute table which labels the values
   LanduseRaster <- ratify(LanduseRaster)
   rat <- levels(LanduseRaster)[[1]]
@@ -116,7 +126,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   PredictorRasters <- rasterize(x=PrecipIrrigSpatial,y=PredictorRasters,mask=TRUE)
   
   #Figure out the leachrates for each of the leach rate types
-  LeachTypes <- c("N.loss.(mean)","N.loss.(median)","P.loss.(mean)","P.loss.(median)")
+  LeachTypes <- c("Nloss.(Mean)","Ploss.(Mean)")
   LeachRateRasters <- lapply(LeachTypes, function(LeachType){
 
     #Use "calc" to work through each x,y cell of the raster brick and select the appropriate leach rate
@@ -140,6 +150,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
 
 #Stick all the rasters together as a stack
   OutputRasterStack <- stack(brick(LeachRateRasters),PredictorRasters)
+
   
   return(OutputRasterStack)
 }
