@@ -189,10 +189,14 @@ load(REC_MeanFlowFile)
 
 #Load the Southland water quality measurement site data and turn into a spatial data frame
 MeasurementSites <- read.table(WaterQualityStationFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
-MeasurementSites <- SpatialPointsDataFrame(coords = MeasurementSites[,c("downcoordX","downcoordY")], data = MeasurementSites,
-                               proj4string = CRS("+init=epsg:2193"))
 #make sure the nzsegment attribute is numeric
 MeasurementSites$nzsegment <- as.numeric(MeasurementSites$nzsegment)
+#NOTE the coordinates in the measurement site file are WRONG, so
+#Get the coordinates from the downstream coordinates for the site's nzsegment.
+MeasurementSites$downcoordX <- RECReachNetwork$downcoordX[match(MeasurementSites$nzsegment,RECReachNetwork$nzsegment)]
+MeasurementSites$downcoordY <- RECReachNetwork$downcoordY[match(MeasurementSites$nzsegment,RECReachNetwork$nzsegment)]
+MeasurementSites <- SpatialPointsDataFrame(coords = MeasurementSites[,c("downcoordX","downcoordY")], data = MeasurementSites,
+                               proj4string = CRS("+init=epsg:2193"))
 #Remove any duplicate sites
 MeasurementSites <- MeasurementSites[!duplicated(MeasurementSites$nzsegment),]
 #Add the TN and TP data
@@ -339,6 +343,8 @@ WaiauFlowCorrection <- data.frame(nzsegment = MainstemReaches, QMean = Mainstemf
 
 
 Create a bunch of points that represent reaches of sub-catchment confluences over a certain strahler order.
+Remove any duplicate sites or sites manually deemed unnecesary as listed in the "unnecesary" file
+Add some extra points that have been manually selected and are listed in the "Extrasites" file
 ```{r}
 SubCatchmentConfluenceReaches <- ReachJunctionFinderByOrder(RECReachNetwork@data,OrderThreshold = 5)
 
@@ -763,8 +769,8 @@ DiffuseLeachRateData <-dplyr::rename(DiffuseLeachRateData,TN_LeachRate = LeachRa
 DiffuseLeachRateData$TP_LeachRate <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[2]])$LeachRate
 
 #Do the same for the physiography-based attenuation estimates. I can use the same function, but different raster input
-DiffuseLeachRateData$TN_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhysAtten[[1]])$LeachRate
-DiffuseLeachRateData$TP_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhysAtten[[2]])$LeachRate
+DiffuseLeachRateData$TN_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhsioAttenEstRaster[[1]])$LeachRate
+DiffuseLeachRateData$TP_AttEst <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = PhsioAttenEstRaster[[2]])$LeachRate
 
 #discombobulate the combined nzsegmentlanduse codes into nzsegment. landuse code and landuse class
 DiffuseLeachRateData$nzsegment <- DiffuseLeachRateData$CombinedClassNameLevel %/% 1000
@@ -817,7 +823,7 @@ Speed improvements were undertaken following https://stackoverflow.com/questions
 RECForMaps <- CompleteSpatialNetwork
 RECForMaps$LineWidthPixels <- pmax(4,as.integer(sqrt(RECForMaps@data$headw_dist)/100)) #SCale the line width, with a minimum of 1 pixel
 
-RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan","Label")]
+RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan","Label","nzsegment")]
 RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
 RECForMaps <- ms_simplify(RECForMaps)
 
@@ -827,7 +833,7 @@ RECForMaps <- ms_simplify(RECForMaps)
 #Note that the raster data was reprojected when it was loaded.
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
-SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial)
+SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial,DiffuseSourceAreas = as(DiffuseLoadSourceAreas,"Spatial"))
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 if(!exists("PhysiographyRasterWGS84"))PhysiographyRasterWGS84 <- CreatePhysiography(SourceFile = PhysiographicDataFile,Domain = CompleteDomain)
@@ -836,35 +842,42 @@ MapData$Physiography <- PhysiographyRasterWGS84
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-          MapData$MeasurementSites@data[i, "SiteDescription"]) 
+          MapData$MeasurementSites@data[i, "SiteDescription"], 
+         '</br>REC#:',MapData$MeasurementSites@data[i, "nzsegment"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
   paste0("Estuary site:", '</br>', 
-          MapData$EstuarySites@data[i, "Name"]) 
+          MapData$EstuarySites@data[i, "Name"], 
+         '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"]) 
 })
 
 UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
+          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
+         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
 })
 
 MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
+          MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
+         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
   paste0("Subcatchment site: ",  
-          MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"]) 
+          MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"], 
+         '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"]) 
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
-  paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
+  paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"], 
+         '</br>REC#:',MapData$RiverMouthSites@data[i, "nzsegment"]) 
 })
 
 TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
-  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
+  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
+         '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"]) 
 })
 
 #Setup the map
@@ -925,6 +938,18 @@ map <- map %>%
   label = GroundwaterLabels,
   group="Groundwater Management Zones")
 
+map <- map %>%
+  addPolygons(data=MapData$DiffuseSourceAreas,
+  fillOpacity = 0,
+  weight = 2,
+  opacity = 1,
+  color = "black",
+  highlight = highlightOptions(
+    weight = 5,
+    color = "#FFF"),
+  label = ~nzsegment,
+  group="Diffuse load source areas")
+
 #Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7
 Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                     na.color = "transparent")
@@ -975,11 +1000,11 @@ map <- map %>%
             opacity = 1) %>%
   
   addLayersControl(
-          overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+          overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones","Diffuse load source areas"),
           options = layersControlOptions(collapsed=FALSE)
           ) %>%
   
-  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones")) %>%
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones","Diffuse load source areas")) %>%
   
   addScaleBar(position = "topleft", options = scaleBarOptions())
 

@@ -8,38 +8,44 @@ library(grDevices)
 MapData <- readRDS("Data/SpatialData.RDS")
 #map <- readRDS("Data/map.RDS")
 
-
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
-         MapData$MeasurementSites@data[i, "SiteDescription"]) 
+         MapData$MeasurementSites@data[i, "SiteDescription"], 
+         '</br>REC#:',MapData$MeasurementSites@data[i, "nzsegment"]) 
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
   paste0("Estuary site:", '</br>', 
-         MapData$EstuarySites@data[i, "Name"]) 
+         MapData$EstuarySites@data[i, "Name"], 
+         '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"]) 
 })
 
 UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-         MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
+         MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
+         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
 })
 
 MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
   paste0("Lake site:", '</br>', 
-         MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"]) 
+         MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
+         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
   paste0("Subcatchment site: ",  
-         MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"]) 
+         MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"], 
+         '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"]) 
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
-  paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"]) 
+  paste0("Rivermouth site: ",'</br>',MapData$RiverMouthSites@data[i, "River"], 
+         '</br>REC#:',MapData$RiverMouthSites@data[i, "nzsegment"]) 
 })
 
 TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
-  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"]) 
+  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
+         '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"]) 
 })
 
 #Setup the map
@@ -100,6 +106,18 @@ map <- map %>%
               label = GroundwaterLabels,
               group="Groundwater Management Zones")
 
+map <- map %>%
+  addPolygons(data=MapData$DiffuseSourceAreas,
+              fillOpacity = 0,
+              weight = 2,
+              opacity = 1,
+              color = "black",
+              highlight = highlightOptions(
+                weight = 5,
+                color = "#FFF"),
+              label = ~nzsegment,
+              group="Diffuse load source areas")
+
 #Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7
 Physpal <- colorFactor(palette=c("#ffff73","#38a800","#7a1973","#9ed7c2","#aa66cd","#ffaa00","#734c00","#002673","#00c5ff","#9c9c9c"), levels <- c(1,2,3,4,5,6,7,8,9,10),
                        na.color = "transparent")
@@ -150,11 +168,11 @@ map <- map %>%
             opacity = 1) %>%
   
   addLayersControl(
-    overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones"),
+    overlayGroups =c("Major Catchments","Point Sources","Water Plan Classes","Physiographic Zones", "River Network", "Groundwater Management Zones","Diffuse load source areas"),
     options = layersControlOptions(collapsed=FALSE)
   ) %>%
   
-  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones")) %>%
+  hideGroup(c("Major Catchments","Point Sources","Water Plan Classes","Groundwater Management Zones","River Network","Physiographic Zones","Diffuse load source areas")) %>%
   
   addScaleBar(position = "topleft", options = scaleBarOptions())
 
