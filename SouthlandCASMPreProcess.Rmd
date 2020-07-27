@@ -88,6 +88,7 @@ PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegment
 TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory, "RECV2ReachNameExtras.csv")
 CASMBasinLookupTableFile<- file.path(DataDirectory, "CASMBasinToSouthlandFMULookupTable.csv")
+CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocation.csv")
 
 
 #Set the names of some Excel workbooks
@@ -269,6 +270,9 @@ PointSources <- read.csv(PointSourceSitesFile,stringsAsFactors = FALSE)
 #Create a spatial file from it
 PointSourcesSpatial <- SpatialPointsDataFrame(coords = PointSources[,c("Easting","Northing")],data = PointSources, proj4string = CRS("+init=epsg:2193"))
 
+#Load the CASM nzsegment override text file. Used to simplify the resulting network
+CASMnzsegmentOverrideData <- read.csv(CASMnzsegOverrideFile)
+
   #Load the Groundwater Management Zone data
 GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile),
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
@@ -433,6 +437,11 @@ write.table(AssessmentPoints,file.path(DataDirectory,"CombinedAssessmentPoints.c
 
 #AllPoints <- c(MeasurementSites$nzsegment, PointSourceSites$nzsegment, MajorCatchmentOuteltReachesDF$nzsegment)
 AllPoints <- CombinedPoints$nzsegment
+
+#For CASM purposes the network can be simplified. This is achieved by overiding the nzsegment number with a "CASMnzsegment" number if it exists from within the CASMnzsegmentOverideForLocation.csv" file
+IndicesOfnzsegmentsToUpdate <- which(AllPoints %in% as.character(CASMnzsegmentOverrideData$nzsegment))
+AllPoints[IndicesOfnzsegmentsToUpdate] <- as.character(CASMnzsegmentOverrideData$CASMnzsegment)
+
 LoadNetwork <- lapply(AllPoints, function(x) {DownstreamReachFinder(RECNetwork = RECReachNetwork, SourceReach = x)} )
 CompleteNetwork <- unlist(LoadNetwork)
 CompleteNetwork <- CompleteNetwork[!duplicated(CompleteNetwork)]
@@ -445,7 +454,10 @@ CompleteSpatialNetwork <- RECReachNetwork[RECReachNetwork$nzsegment %in% Complet
 I need to name the reach segments to match the real world names.
 Some can be looked up, but these will need to be manually checked.
 The rest need to be manually named.
+Turn this into a function that accepts a spatial network and returns a labelled version
 ```{r}
+NetworkLabeller <- function(RECV2Network = CompleteSpatialNetwork){
+
 #Name as much as possible from the LINZ river naming spatial data sets
 NamedCompleteSpatialNetwork <- RECReachNamer(RECV2Network = CompleteSpatialNetwork)
 
@@ -456,7 +468,8 @@ NamedCompleteSpatialNetwork <- RECReachNamer(RECV2Network = CompleteSpatialNetwo
 ExtraRECReachLabels <- read.table(ExtraRECReachLabelsFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
 
 #Use this to update the names
-NamedCompleteSpatialNetwork$name[match(ExtraRECReachLabels$nzsegment,NamedCompleteSpatialNetwork$nzsegment)] <- ExtraRECReachLabels$name
+IndexOfNamesToUpdate <- which(NamedCompleteSpatialNetwork$nzsegment %in% ExtraRECReachLabels$nzsegment)
+NamedCompleteSpatialNetwork$name[IndexOfNamesToUpdate] <- ExtraRECReachLabels$name[match(NamedCompleteSpatialNetwork$nzsegment[IndexOfNamesToUpdate],ExtraRECReachLabels$nzsegment)]
 
 #Use the estuary sites list to update any reaches that don't already have a name (useful for all the outlet reaches)
 #Find which of the estuary reach numbers need updating
@@ -467,6 +480,11 @@ NamedCompleteSpatialNetwork$name[EstuaryReachesToBeUpdated] <- EstuarySites$Name
 #Name all remaining reaches by checking  the name immediately downstream or by getting manual input
 NetworkLabelList <- NetworkNamer(RECNetwork = NamedCompleteSpatialNetwork)
 
+#Add the tributary labels to the network
+SegmentToLabelLookUpTable <- do.call(rbind,NetworkLabelList)
+CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$name[match(CompleteSpatialNetwork@data$nzsegment,SegmentToLabelLookUpTable$nzsegment)]
+return(CompleteSpatialNetwork)
+}
 ```
 
 
@@ -576,9 +594,6 @@ Then create a tributary table ready for CASM
 **** This needs an Outlet Reach Name lookup table to be manually prepared ****
 ```{r}
 
-#Add the tributary labels to the network
-SegmentToLabelLookUpTable <- do.call(rbind,NetworkLabelList)
-CompleteSpatialNetwork@data$Label <- SegmentToLabelLookUpTable$name[match(CompleteSpatialNetwork@data$nzsegment,SegmentToLabelLookUpTable$nzsegment)]
 
 #add the Southland freshwater management unit name
 CompleteSpatialNetwork$FMU <- unlist(CompleteSpatialNetwork %over% MajorCatchments)
@@ -592,7 +607,7 @@ CompleteSpatialNetwork@data$CASMBasin <- CASMBasinLookupTable$CASM_Basin[match(C
 #CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsegment,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
 
 #Save the network as a spatial file
-writeOGR(CompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetwork-named", driver="ESRI Shapefile",overwrite_layer=TRUE)
+#writeOGR(CompleteSpatialNetwork, file.path(GISDataDirectory), "CASM-StreamNetwork-namedV2", driver="ESRI Shapefile",overwrite_layer=TRUE)
 
 TributaryConnectionTable <- TributaryConnectionCreator(RECNetwork = CompleteSpatialNetwork, TributaryLabelList = NetworkLabelList)
 
@@ -610,6 +625,10 @@ and a diffuse inputs table ready for CASM
 ```{r}
 #Create a dataframe of just the nzsegment number and the site name
 PointSourceNodes <- PointSourcesSpatial@data[,c("Source","nzsegment")]
+
+#Update the nzsegment numbers to use the CASM override nzsegment numbers
+IndicesOfnzsegmentsToUpdate <- which(PointSourceNodes$nzsegment %in% CASMnzsegmentOverrideData$nzsegment)
+PointSourceNodes$nzsegment[IndicesOfnzsegmentsToUpdate] <- CASMnzsegmentOverrideData$CASMnzsegment[match(PointSourceNodes$nzsegment[IndicesOfnzsegmentsToUpdate],CASMnzsegmentOverrideData$nzsegment)]
 
 #Standardise the column names so that it matches the expected format in the CASMNodeTablePreparer() function
 names(PointSourceNodes) <- c("NodeName","nzsegment")
@@ -634,7 +653,7 @@ PointSourceTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(PointSource
 
 
 
-#Repeat for the measurement sites
+#Repeat for the measurement sites. Note that these do not have any CASM override nzsegments
 ```{r}
 MeasurementSiteNodes <- MeasurementSites[,c("sID","nzsegment")]
 names(MeasurementSiteNodes) <- c("NodeName","nzsegment")
@@ -674,20 +693,37 @@ AssessmentSiteNodes$NodeName[is.na(AssessmentSiteNodes$NodeName)] <- CompleteSpa
 #Any "unnamed" lakes name with the Lake ID
 AssessmentSiteNodes$NodeName[AssessmentSiteNodes$NodeName=="unnamed"] <- paste("LakeID: ",LakeSites$LID[match(AssessmentSiteNodes$nzsegment[AssessmentSiteNodes$NodeName=="unnamed"],LakeSites$nzsegment)])
 
+#Get the mean flow for all the assessment points
+#Add the mean annual flow to the table
+MeanFlows <- REC2MeanFlow[match(AssessmentSiteTable$nzsegment, REC2MeanFlow$nzsegment),c("nzsegment","QMean")]
+
+#Update with the modified Waiau flows
+WaiauIndices <- which(MeanFlows$nzsegment %in% WaiauFlowCorrection$nzsegment)
+MeanFlows$QMean[WaiauIndices] <- WaiauFlowCorrection$QMean[match(MeanFlows$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)]
+
+#Add a column with the CASM override nzsegments in it
+MeanFlows$CASMnzsegment <- MeanFlows$nzsegment
+IndicesOfnzsegmentsToUpdate <- which(MeanFlows$nzsegment %in% CASMnzsegmentOverrideData$nzsegment)
+MeanFlows$CASMnzsegment[IndicesOfnzsegmentsToUpdate] <- CASMnzsegmentOverrideData$CASMnzsegment[match(MeanFlows$nzsegment[IndicesOfnzsegmentsToUpdate],CASMnzsegmentOverrideData$nzsegment)]
+#Aggregate flows to common CASMoverride nzsegments
+
+
+#Update the nzsegment numbers to use the CASM override nzsegment numbers
+IndicesOfnzsegmentsToUpdate <- which(AssessmentSiteNodes$nzsegment %in% CASMnzsegmentOverrideData$nzsegment)
+AssessmentSiteNodes$nzsegment[IndicesOfnzsegmentsToUpdate] <- CASMnzsegmentOverrideData$CASMnzsegment[match(AssessmentSiteNodes$nzsegment[IndicesOfnzsegmentsToUpdate],CASMnzsegmentOverrideData$nzsegment)]
+
 AssessmentSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNetwork, NetworkLabelList = NetworkLabelList, TributaryConnectionTable = TributaryConnectionTable,CASMNodes= AssessmentSiteNodes)
 
 #rename the columns to match the CASM conventions
 names(AssessmentSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
 
+#Add the aggregated flows to the dataframe
+AssessmentSiteTable$"Mean flow (m3/s)" <- bob
+
 #Update the site name to combine the nzsegment and the existing site name
 AssessmentSiteTable$`Site Name or No` <- paste0(AssessmentSiteTable$`Site Name or No`,"-",AssessmentSiteTable$nzsegment)
 
-#Add the mean annual flow to the table
-AssessmentSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(AssessmentSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
 
-#Update with the modified Waiau flows
-WaiauIndices <- which(AssessmentSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
-AssessmentSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(AssessmentSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
 
 #Add the CASM Basin details
 AssessmentSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(AssessmentSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
@@ -747,7 +783,7 @@ LanduseLUT <- levels(LandUseRaster)[[1]]
 #rasterize the diffuse source area spatial data, aligning to the Landuse data
 DiffuseSourceRaster <- rasterize(DiffuseLoadSourceAreas, LandUseRaster, "nzsegment")
 
-#Calculate a new raster by dividing the DiffuseSourceArea by 100000000, then adding the landuse class.
+#Calculate a new raster by multiplying the DiffuseSourceArea by 100, then adding the landuse class.
 #This leads to 88888888888088, 888888888088 etc. to represent the unique nzsegment and landuse areas. The last three numbers are the landuse code. The first 8 numbers are the nzsegment. This needs to be an integer to enable generating a raster attribute table.
 DiffuseSourceLanduse <- (DiffuseSourceRaster * 1000) + LandUseRaster
 #Need to add a RAT
