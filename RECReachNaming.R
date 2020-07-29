@@ -425,22 +425,21 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
 CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork = RECReachNetwork@data, CASMNodes = c(15308687,15305100,15309794)){
   
   if (!require(tidyr)) install.packages('tidyr'); library(tidyr)  #needed for the drop_na() function
-  
   #Get the individual watershed for each CASM Node
-  NodeWatersheds <- RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),]
+  NodeWatersheds <- st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),])
   #Get the entire catchment for each node
   CompleteCatchments <- lapply(CASMNodes, function(CASMNode){
-    #browser()
+
     CatchmentReaches <- CASMNode
     Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE == RECNetwork$FROM_NODE[RECNetwork$nzsegment == CASMNode])]
     while(length(Upstreamreaches) > 0){
       CatchmentReaches <- c(CatchmentReaches,Upstreamreaches)
       Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE %in% RECNetwork$FROM_NODE[RECNetwork$nzsegment %in% Upstreamreaches])]
     }
-    NodeCatchment <- st_union(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),])
+    NodeCatchment <- st_union(st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),]))
     return(NodeCatchment)
   })
-  
+
   #Figure out which part of the catchment is associated with the node, excluding upstream node catchments.
   IntersectedCatchments <- CompleteCatchments %>% do.call(c,.) %>% #Combined the node catchments into one spatial object
     st_intersection() %>%                                          #intersect them so the catchments are not nested. This is sort of like generating watersheds for just the reaches of interest
