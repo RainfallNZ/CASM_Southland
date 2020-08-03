@@ -8,6 +8,7 @@ library(grDevices)
 MapData <- readRDS("Data/SpatialData.RDS")
 #map <- readRDS("Data/map.RDS")
 
+
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
          MapData$MeasurementSites@data[i, "SiteDescription"], 
@@ -15,15 +16,19 @@ MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), functi
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
-  paste0("Estuary site:", '</br>', 
-         MapData$EstuarySites@data[i, "Name"], 
-         '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"]) 
+  Label <-  paste0("Estuary site:", '</br>', 
+                   MapData$EstuarySites@data[i, "Name"], 
+                   '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"])
+  if(MapData$EstuarySites@data[i, "CASMnzsegment"] != MapData$EstuarySites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$EstuarySites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
-  paste0("Lake site:", '</br>', 
-         MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
-         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
+  Label = paste0("Lake site:", '</br>', 
+                 MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
+                 '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"])
+  if(MapData$LakeSites@data[i, "CASMnzsegment"] != MapData$LakeSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$LakeSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
@@ -33,9 +38,11 @@ MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), funct
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
-  paste0("Subcatchment site: ",  
-         MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"], 
-         '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"]) 
+  Label=paste0("Subcatchment site: ",  
+               MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"], 
+               '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"])
+  if(MapData$SubCatchmentSites@data[i, "CASMnzsegment"] != MapData$SubCatchmentSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$SubCatchmentSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
@@ -44,8 +51,10 @@ RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function
 })
 
 TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
-  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
-         '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"]) 
+  Label=paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
+               '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"])
+  if(MapData$TeAoMaramaSites@data[i, "CASMnzsegment"] != MapData$TeAoMaramaSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$TeAoMaramaSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 #Setup the map

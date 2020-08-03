@@ -296,7 +296,7 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
     #the highest nzsegment below the tributary and 
     #the label of the tributary below (i.e. the confluence name)
     AllDistances <- sapply(UniqueTribs, function(TribLabel) {
-      #browser()
+
       #Get the REC data for the current tributary
       ReachData <- RECNetwork[RECNetwork$nzsegment %in% CatchmentTribLabels$nzsegment[CatchmentTribLabels$label == TribLabel],]
       
@@ -318,6 +318,17 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
       
       #Find the headwater distance of the reach immediately below the tributary confluence
       TributaryLocations <-  RECNetwork$headw_dist[RECNetwork$nzsegment == ReachBelow]
+      
+      #Special case where the headwater distance is 0 but it is not a headwater reach which means the data are wrong. This has occurred in at least one situation (nzsegment = 15400003)
+      #Move down stream and get the headwater distance from the reach below
+      if(TributaryLocations == 0 & RECNetwork$Headwater[RECNetwork$nzsegment == ReachBelow] == 0){
+        #Move down the network one more step
+        ReachBelow <- RECNetwork$nzsegment[which(RECNetwork$FROM_NODE == RECNetwork$TO_NODE[RECNetwork$nzsegment == ReachBelow])]
+        #And get the headwater distance from this reach. This assumes that there are not two reaches in a row missing the headwater distance data
+        TributaryLocations <-  RECNetwork$headw_dist[RECNetwork$nzsegment == ReachBelow]
+      }
+      
+
       
       return(c(TribConnectionTotalDistance,LowestReach,ReachBelow,TribBelow,TributaryLocations))
     })
@@ -392,6 +403,8 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
 
         #Find the headwater distance of the node's reach 
         TributaryLocations <-  CASMRECNetwork$headw_dist[CASMRECNetwork$nzsegment == CASMNode$nzsegment]
+        #Extra special case for nzsegment 15273072, which is wrong! Part of the Oreti/Acton confluence REC upgrade.
+        if(CASMNode$nzsegment == 15273072)TributaryLocations <- 95000
         
         Result <- c(nzsegment=CASMNode$nzsegment,CASMNodeName=CASMNode$NodeName,TribName = NodeTribName,TribLocn = round(TributaryLocations/1000,0))
         return(Result)

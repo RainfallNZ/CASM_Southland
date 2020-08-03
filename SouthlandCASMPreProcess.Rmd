@@ -103,7 +103,7 @@ DiffuseLoadSourceAreasFile <- file.path(GISDataDirectory,"CASMDiffuseLoadSourceA
 LanduseShapeFile        <- file.path(GISDataDirectory,"LanduseLayers/LandUse2017/LandUse2017.shp")
 SoilDrainageShapeFile   <- file.path(GISDataDirectory,"LanduseLayers/Soil_drainage/Soil_drainage.shp")
 SlopeClassShapeFile     <- file.path(GISDataDirectory,"LanduseLayers/LRI_Slope_Layer/LRI_Slope_Layer.shp")
-PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/PrecipitationClass_withIrri/PrecipitationClass_withIrri.shp")
+PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/PrecipitationClass_withIrri/Complete_Southland_Precip_Layer.shp")
 
 
 #Set the name of raster file data in geoTiff format
@@ -113,9 +113,11 @@ PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250
 PhysiographyBasedAttenuationEstimatesFile <- file.path(GISDataDirectory,"PhysioAttenuationEstimates 250 x 250.tif")
 
 #Set the names of some text tables in csv format
+RECUpdateDataFile       <- file.path(DataDirectory,"RECDataUpdates.csv")
 LakeSiteFile            <- file.path(DataDirectory,"Lakes_ToIncludeAsAssessmentPoints.csv")
 WaterQualityStationFile <- file.path(DataDirectory,"WQStationLocations_May2020.csv")
-WaterQualityDataFile    <-file.path(DataDirectory,"WaterQualityStationLoadConcData.csv")
+WaterQualityDataFile    <-file.path(DataDirectory,"WaterQualityStationLoadConcDataV2.csv")
+
 #OutletReachNamesFile   <- "OutletReachNames.csv"
 EstuarySiteFile         <- "Estuaries.csv"
 #NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"NZsegmentToWaterPlan.csv")
@@ -132,6 +134,8 @@ CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocat
 #Set the names of some Excel workbooks
 LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
 PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Attenuation Estimates.xlsx")
+#Water quality load data updated for location shifts
+WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
 
 ```
 
@@ -175,14 +179,23 @@ NZsegmentToWaterPlanClassLookUpTable <- read.table(NZsegmentToWaterPlanClassLook
 # write.table(REC2ToWaterPlanLUT,file=file.path(DataDirectory,NZsegmentToWaterPlanClassLookUpTableFile), sep=",",row.names = FALSE)
 # }
 
-#REC data has been sourced from LWP data stores. It has cut down versions of the attribute names, e.g. nzsegment is nzsgmnt. Keep an eye on this when comparing to other data sources that may have the full RECV2 attribute names.
+#REC data has been sourced from LWP data stores.
+#Unfortunately some of the associated attributes have not been updated after the network has been.
+#This is known to affect the "headw_dist" attribute
 RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
                            layer = REC_rivers, stringsAsFactors = FALSE)
 
 RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
-#Explicitly set the "headw_dist","nzsegment","headw_dist","TO_NODE","FROM_NODE" attributes to numeric
+#Explicitly set the "headw_dist","nzsegment","TO_NODE","FROM_NODE" attributes to numeric
 
 RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")]<- lapply(RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")],as.numeric)
+
+#Load a maually prepared update file which has manual estimates for corrected attributes for some segments
+RECUpdateData <- read.table(RECUpdateDataFile,stringsAsFactors = FALSE, sep=",",header=TRUE)
+
+#Update the REC network data with the updates
+RECReachNetwork$headw_dist[match(RECUpdateData$nzsegment,RECReachNetwork$nzsegment)] <- RECUpdateData$headw_dist
+
 #Load the REC2 utility data with lots of useful stuff in it, including river names
 load(REC2UtilityFile)   #This provides the REC2Utility data frame
 #Cut it down to Southland
@@ -199,6 +212,7 @@ names(SouthlandREC2ExtraUtility)[2] <- "UpstreamHighProducingExoticPasture"
 
 SouthlandREC2Utility <- join(SouthlandREC2Utility,SouthlandREC2ExtraUtility, type="left")
 #Calculate percentage upstream exotic pasture
+#Note that SouthlandREC2Utility$catAreaKM2 is out of date and should be updated with the equivalent attribute from the REC network data
 SouthlandREC2Utility$pctExoticPasture <- SouthlandREC2Utility$UpstreamHighProducingExoticPasture / SouthlandREC2Utility$catAreaKM2 /10000
 #Fix the five aberrant values 
 SouthlandREC2Utility$pctExoticPasture[SouthlandREC2Utility$pctExoticPasture > 100] <- 100
@@ -216,15 +230,18 @@ SouthlandREC2Utility$pctExoticPasture[SouthlandREC2Utility$pctExoticPasture > 10
 ##Add the Environment Southland Water Plan Class to the REC2 data
 RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
-#REstrict it to just the major catchments of interest
+#Restrict it to just the major catchments of interest
 #RECReachNetwork <- gIntersection(RECReachNetwork,CompleteDomain,byid =TRUE)
 
 #RECWatersheds <- readOGR(dsn = dirname(REC_Catchments),
 #                         layer = basename(REC_Catchments), stringsAsFactors = FALSE)
 #RECWatersheds <- spTransform(RECWatersheds,CRS("+init=epsg:2193") )
 
-#Load the mean flow data for the REC V2. This is provided in an rdata file which contains the data frame REC2MeanFlow, with three columns, "nzsegment","QMean", and "us_catarea"
+#Load the mean flow data for the REC V2. This is provided in an rdata file which contains the data frame REC2MeanFlow, with three columns, "nzsegment","QMean", and "us_catarea". Note that "us_catarea" is out of date. The CUMAREA attribute from the REC network data should be used.
 load(REC_MeanFlowFile)
+
+#Update the QMean using the manually prepared RECUpdateData
+REC2MeanFlow$QMean[match(RECUpdateData$nzsegment,REC2MeanFlow$nzsegment)] <- RECUpdateData$Qmean
 
 #Load the Southland water quality measurement site data and turn into a spatial data frame
 MeasurementSites <- read.table(WaterQualityStationFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
@@ -242,12 +259,18 @@ MeasurementSites <- MeasurementSites[!duplicated(MeasurementSites$nzsegment),]
 MeasurementSiteData <- read.table(WaterQualityDataFile, sep=",",stringsAsFactors = FALSE, header = TRUE)
 TNData <- MeasurementSiteData[MeasurementSiteData$npID=="TN",]
 MeasurementSites$'TN Load(kg/yr)'     <- TNData$ExpCoeff[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)] / 10000
-MeasurementSites$'TN Load Lci(kg/yr)' <- TNData$ExpCoeff_Lci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
-MeasurementSites$'TN Load Uci(kg/yr)' <- TNData$ExpCoeff_Uci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+#MeasurementSites$'TN Load Lci(kg/yr)' <- TNData$ExpCoeff_Lci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+#MeasurementSites$'TN Load Uci(kg/yr)' <- TNData$ExpCoeff_Uci[match(MeasurementSites$sID,TNData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
 TPData <- MeasurementSiteData[MeasurementSiteData$npID=="TP",]
 MeasurementSites$'TP Load(kg/yr)'     <- TPData$ExpCoeff[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
-MeasurementSites$'TP Load Lci(kg/yr)' <- TPData$ExpCoeff_Lci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
-MeasurementSites$'TP Load Uci(kg/yr)' <- TPData$ExpCoeff_Uci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+#MeasurementSites$'TP Load Lci(kg/yr)' <- TPData$ExpCoeff_Lci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+#MeasurementSites$'TP Load Uci(kg/yr)' <- TPData$ExpCoeff_Uci[match(MeasurementSites$sID,TPData$sID)] * TNData$CATCHAREA[match(MeasurementSites$sID,TNData$sID)]/ 10000
+
+#Load Measurement site data update data
+WaterQualityDataUpdate <- read.xlsx(WaterQualityDataUpdateFile)
+#Update the MeasurementSite data
+MeasurementSites$`TN Load(kg/yr)`[match(WaterQualityDataUpdate$site.name,MeasurementSites$sID)] <- WaterQualityDataUpdate$TN_kg
+MeasurementSites$`TP Load(kg/yr)`[match(WaterQualityDataUpdate$site.name,MeasurementSites$sID)] <- WaterQualityDataUpdate$TP_kg
 
 #Load lake sites of interest
 LakeSites  <- read.table(LakeSiteFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
@@ -416,8 +439,9 @@ SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[is.na
 #Add any additional sites from the manually created "ExtraSites"
 SubCatchmentConfluencePointsSpatial <- bind(SubCatchmentConfluencePointsSpatial,ExtraSites[which(!ExtraSites$nzsegment %in% SubCatchmentConfluencePointsSpatial$nzsegment),c("nzsegment","Reason")])
 
-#Add the River names
-SubCatchmentConfluencePointsSpatial@data <- join(SubCatchmentConfluencePointsSpatial@data,SouthlandREC2Utility[,c("nzsegment","RiverName")],type="left")
+#Add the River names. Note that the SouthlandREC2Utility names are not very good. So don't use it.
+#SubCatchmentConfluencePointsSpatial@data <- join(SubCatchmentConfluencePointsSpatial@data,SouthlandREC2Utility[,c("nzsegment","RiverName")],type="left")
+SubCatchmentConfluencePointsSpatial$RiverName <- NA
 
 #Remove points not within the overall domain
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!is.na(SubCatchmentConfluencePointsSpatial %over% CompleteDomain),]
@@ -685,24 +709,31 @@ MeasurementSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNe
 #rename the columns to match the CASM conventions
 names(MeasurementSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
 
-#Add the mean annual flow to the table
-MeasurementSiteTable$"Mean flow (m3/s)" <- round(REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsegment, REC2MeanFlow$nzsegment)],1)
+#Add the mean annual flow to the table. Use the measureent site data, but not for the sites with updated locations. Assume the measurement site flows are correct, unless the nzsegment has changed
+MeasurementSiteTable$"Mean flow (m3/s)" <- round(MeasurementSiteData$MeanFlow[match(MeasurementSiteTable$`Site Name or No`,MeasurementSiteData$sID)])
+#For those sites that have updated nzsegment numbers, use the mean flow from the REC2MeanFlow data set
+SitesRequiringFlowUpdate <- which(!MeasurementSiteTable$nzsegment %in% MeasurementSiteData$nzsegment)
+MeasurementSiteTable$"Mean flow (m3/s)"[SitesRequiringFlowUpdate] <- REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsegment[SitesRequiringFlowUpdate],REC2MeanFlow$nzsegment)]
 
-#Correct the Waiau flows for Manapori operation
-WaiauIndices <- which(MeasurementSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
-MeasurementSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(MeasurementSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
+#Correct the Waiau flows for Manapouri operation. This is no longer needed as the source data has been edited for the two Waiau flow sites.
+#This does mean that the flow data from the DIffuse nodes doesn't always match the measurement sites though.
+#WaiauIndices <- which(MeasurementSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
+#MeasurementSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(MeasurementSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)]
+
+#Round the values
+MeasurementSiteTable$"Mean flow (m3/s)" <- round(MeasurementSiteTable$"Mean flow (m3/s)",1)
 
 #Add the CASM Basin details
 MeasurementSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(MeasurementSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
 
 #Add a variety of other fields from the Measurement Site data
 MeasurementSiteTable$'TN Load (kg/yr)'     <- round(MeasurementSites$'TN Load(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'TN Load Lci (kg/yr)' <- round(MeasurementSites$'TN Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'TN Load Uci (kg/yr)' <- round(MeasurementSites$'TN Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'TN Load Lci (kg/yr)' <- round(MeasurementSites$'TN Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'TN Load Uci (kg/yr)' <- round(MeasurementSites$'TN Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
 
 MeasurementSiteTable$'TP Load (kg/yr)'     <- round(MeasurementSites$'TP Load(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'TP Load Lci (kg/yr)' <- round(MeasurementSites$'TP Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
-MeasurementSiteTable$'TP Load Uci (kg/yr)' <- round(MeasurementSites$'TP Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'TP Load Lci (kg/yr)' <- round(MeasurementSites$'TP Load Lci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
+#MeasurementSiteTable$'TP Load Uci (kg/yr)' <- round(MeasurementSites$'TP Load Uci(kg/yr)'[match(MeasurementSiteTable$"Site Name or No", MeasurementSites$sID)],1)
 ```
 
 #Repeat for all assessment points (except the measurement points that have already been done)
@@ -711,6 +742,7 @@ AssessmentSites <- CombinedPoints[!CombinedPoints$Type %in% c("Point Source","Wa
 
 AssessmentSiteNodes <- AssessmentSites[,c("Name","nzsegment","Type","Comment")]
 names(AssessmentSiteNodes)[1] <- "NodeName"
+
 #Any sites missing names, use their river reach names, but need to use the all-points network, not the CASM refined network.
 #The CASM refined network doesn't have all the reaches, so not everything can be named. For the small side tributaries this gives them the right name. If it was ignored and the naming was done after the CASM override was done, then the names would transfer to the overriden reach which is often a large river, so you wouldn't really know where it was.
 AssessmentSiteNodes$NodeName[is.na(AssessmentSiteNodes$NodeName)] <- AllPointsCompleteSpatialNetwork$Label[match(AssessmentSiteNodes$nzsegment[is.na(AssessmentSiteNodes$NodeName)],AllPointsCompleteSpatialNetwork$nzsegment)]
@@ -930,6 +962,11 @@ RECForMaps <- RECForMaps[,c("LineWidthPixels","WaterPlan","Label","nzsegment")]
 RECForMaps$WaterPlan <- as.factor(RECForMaps$WaterPlan)
 RECForMaps <- ms_simplify(RECForMaps)
 
+#The Subcatchment points never get labelled properly so do that now.
+#Use their river reach names, but need to use the all-points network, not the CASM refined network.
+#The CASM refined network doesn't have all the reaches, so not everything can be named. For the small side tributaries this gives them the right name. If it was ignored and the naming was done after the CASM override was done, then the names would transfer to the overriden reach which is often a large river, so you wouldn't really know where it was.
+SubCatchmentConfluencePointsSpatial$RiverName <- AllPointsCompleteSpatialNetwork$Label[match(SubCatchmentConfluencePointsSpatial$nzsegment,AllPointsCompleteSpatialNetwork$nzsegment)]
+
 
 
 #Reproject the vector spatial data to the maps projection ready for plotting
@@ -937,6 +974,14 @@ RECForMaps <- ms_simplify(RECForMaps)
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
 SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial,DiffuseSourceAreas = as(DiffuseLoadSourceAreas,"Spatial"))
+
+SpatialData <- lapply(SpatialData, function(SingleLayer) {
+  SingleLayer$CASMnzsegment <- SingleLayer$nzsegment
+  IndicesOfnzsegmentsToUpdate <- which(SingleLayer$CASMnzsegment %in% CASMnzsegmentOverrideData$nzsegment)
+SingleLayer$CASMnzsegment[IndicesOfnzsegmentsToUpdate] <- CASMnzsegmentOverrideData$CASMnzsegment[match(SingleLayer$nzsegment[IndicesOfnzsegmentsToUpdate],CASMnzsegmentOverrideData$nzsegment)]
+return(SingleLayer)
+ }) 
+
 MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 if(!exists("PhysiographyRasterWGS84"))PhysiographyRasterWGS84 <- CreatePhysiography(SourceFile = PhysiographicDataFile,Domain = CompleteDomain)
@@ -950,15 +995,19 @@ MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), functi
 })
 
 EstuarySiteLabels <- lapply(seq(nrow(MapData$EstuarySites@data)), function(i) {
-  paste0("Estuary site:", '</br>', 
+  Label <-  paste0("Estuary site:", '</br>', 
           MapData$EstuarySites@data[i, "Name"], 
-         '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"]) 
+         '</br>REC#:',MapData$EstuarySites@data[i, "nzsegment"])
+  if(MapData$EstuarySites@data[i, "CASMnzsegment"] != MapData$EstuarySites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$EstuarySites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 UnMonitoredLakeSiteLabels <- lapply(which(!MapData$LakeSites@data$Monitored), function(i) {
-  paste0("Lake site:", '</br>', 
+  Label = paste0("Lake site:", '</br>', 
           MapData$LakeSites@data[i, "LakeName"],'</br>',"LID: ",MapData$LakeSites@data[i, "LID"], 
-         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"]) 
+         '</br>REC#:',MapData$LakeSites@data[i, "nzsegment"])
+  if(MapData$LakeSites@data[i, "CASMnzsegment"] != MapData$LakeSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$LakeSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), function(i) {
@@ -968,9 +1017,11 @@ MonitoredLakeSiteLabels <- lapply(which(MapData$LakeSites@data$Monitored), funct
 })
 
 SubCatchmentSites <- lapply(seq(nrow(MapData$SubCatchmentSites@data)), function(i) {
-  paste0("Subcatchment site: ",  
+  Label=paste0("Subcatchment site: ",  
           MapData$SubCatchmentSites@data[i, "RiverName"],'</br>',MapData$SubCatchmentSites@data[i, "Reason"], 
-         '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"]) 
+         '</br>REC#:',MapData$SubCatchmentSites@data[i, "nzsegment"])
+    if(MapData$SubCatchmentSites@data[i, "CASMnzsegment"] != MapData$SubCatchmentSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$SubCatchmentSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function(i) {
@@ -979,8 +1030,10 @@ RiverMouthSiteLabels <- lapply(seq(nrow(MapData$RiverMouthSites@data)), function
 })
 
 TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function(i) {
-  paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
-         '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"]) 
+  Label=paste0("Cultural site: ",'</br>',MapData$TeAoMaramaSites@data[i, "Waterbody"],'</br>',MapData$TeAoMaramaSites@data[i, "Location.descriptor"], 
+         '</br>REC#:',MapData$TeAoMaramaSites@data[i, "nzsegment"])
+  if(MapData$TeAoMaramaSites@data[i, "CASMnzsegment"] != MapData$TeAoMaramaSites@data[i, "nzsegment"]) {Label <- paste0(Label,'</br>CASM-REC#:',MapData$TeAoMaramaSites@data[i, "CASMnzsegment"])}
+  return(Label)
 })
 
 #Setup the map
@@ -1150,5 +1203,5 @@ addWorksheet(Out, "Diffuse Inputs")
 
 writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
-saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV2.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV3.xlsx"), overwrite = T)
 ```
