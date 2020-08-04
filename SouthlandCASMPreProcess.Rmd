@@ -709,8 +709,8 @@ MeasurementSiteTable <- CASMNodeTablePreparer(CASMRECNetwork = CompleteSpatialNe
 #rename the columns to match the CASM conventions
 names(MeasurementSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Downstream Location (km)")
 
-#Add the mean annual flow to the table. Use the measureent site data, but not for the sites with updated locations. Assume the measurement site flows are correct, unless the nzsegment has changed
-MeasurementSiteTable$"Mean flow (m3/s)" <- round(MeasurementSiteData$MeanFlow[match(MeasurementSiteTable$`Site Name or No`,MeasurementSiteData$sID)])
+#Add the mean annual flow to the table. Use the measurement site data, but not for the sites with updated locations. Assume the measurement site flows are correct, unless the nzsegment has changed
+MeasurementSiteTable$"Mean flow (m3/s)" <- MeasurementSiteData$MeanFlow[match(MeasurementSiteTable$`Site Name or No`,MeasurementSiteData$sID)]
 #For those sites that have updated nzsegment numbers, use the mean flow from the REC2MeanFlow data set
 SitesRequiringFlowUpdate <- which(!MeasurementSiteTable$nzsegment %in% MeasurementSiteData$nzsegment)
 MeasurementSiteTable$"Mean flow (m3/s)"[SitesRequiringFlowUpdate] <- REC2MeanFlow$QMean[match(MeasurementSiteTable$nzsegment[SitesRequiringFlowUpdate],REC2MeanFlow$nzsegment)]
@@ -721,7 +721,7 @@ MeasurementSiteTable$"Mean flow (m3/s)"[SitesRequiringFlowUpdate] <- REC2MeanFlo
 #MeasurementSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(MeasurementSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)]
 
 #Round the values
-MeasurementSiteTable$"Mean flow (m3/s)" <- round(MeasurementSiteTable$"Mean flow (m3/s)",1)
+MeasurementSiteTable$"Mean flow (m3/s)" <- round(MeasurementSiteTable$"Mean flow (m3/s)",2)
 
 #Add the CASM Basin details
 MeasurementSiteTable$CASMBasin <- CompleteSpatialNetwork$CASMBasin[match(MeasurementSiteTable$nzsegment,CompleteSpatialNetwork$nzsegment)]
@@ -1203,5 +1203,5 @@ addWorksheet(Out, "Diffuse Inputs")
 
 writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
-saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV3.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV3c.xlsx"), overwrite = T)
 ```
