@@ -271,6 +271,8 @@ WaterQualityDataUpdate <- read.xlsx(WaterQualityDataUpdateFile)
 #Update the MeasurementSite data
 MeasurementSites$`TN Load(kg/yr)`[match(WaterQualityDataUpdate$site.name,MeasurementSites$sID)] <- WaterQualityDataUpdate$TN_kg
 MeasurementSites$`TP Load(kg/yr)`[match(WaterQualityDataUpdate$site.name,MeasurementSites$sID)] <- WaterQualityDataUpdate$TP_kg
+#Save to a spatial file for external mapping purposes if required
+writeOGR(MeasurementSites,dsn=file.path(GISDataDirectory,"ReportLayers"),layer="MeasurementSites",driver="ESRI Shapefile",overwrite_layer=TRUE)
 
 #Load lake sites of interest
 LakeSites  <- read.table(LakeSiteFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
@@ -368,13 +370,13 @@ PhsioAttenEstRaster <- stack(PhysiographyBasedAttenuationEstimatesFile)
 #**********************************************************
 #If the physiography-based attenuation estimates raster file is missing or needs to be re-created then use the following:
 #Takes 4 minutes at 250 m
-# tic()
-# PhsioAttenEstRaster <- CreatePhysiographyAttenuationEstimates(PhysiographicFile = PhysiographicDataFile,
-#                                                    Domain = CompleteDomain, 
-#                                                    AttenuationLookupTable = PhysiographicAttenuationLookupTableFile)
-# toc()
-# #And save it for nexttime
-# writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
+#tic()
+#PhsioAttenEstRaster <- CreatePhysiographyAttenuationEstimates(PhysiographicFile = PhysiographicDataFile,
+#                                                   Domain = CompleteDomain,
+#                                                   AttenuationLookupTable = PhysiographicAttenuationLookupTableFile)
+#toc()
+#And save it for nexttime
+writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
 # 
 # #******************************************************************
 
