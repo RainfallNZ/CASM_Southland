@@ -593,7 +593,7 @@ CreatePhysiographyAttenuationEstimates <- function(PhysiographicFile = Physiogra
   
   #Use the lookup table to create a Physiographic-based contaminant leach attenuation value
   Physiography$TNAttenuation <- AttenLookupTable$TNAttenuation[match(Physiography$Variant,AttenLookupTable$Variant)]
-  Physiography$TPAttenuation <- AttenLookupTable$TNAttenuation[match(Physiography$Variant,AttenLookupTable$Variant)]
+  Physiography$TPAttenuation <- AttenLookupTable$TPAttenuation[match(Physiography$Variant,AttenLookupTable$Variant)]
   
   #Convert each to a raster with an attribute table, and  for mapping later on
   #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
