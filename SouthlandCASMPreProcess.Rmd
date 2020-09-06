@@ -376,7 +376,7 @@ PhsioAttenEstRaster <- stack(PhysiographyBasedAttenuationEstimatesFile)
 #                                                   AttenuationLookupTable = PhysiographicAttenuationLookupTableFile)
 #toc()
 #And save it for nexttime
-writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
+#writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
 # 
 # #******************************************************************
 
@@ -1205,5 +1205,5 @@ addWorksheet(Out, "Diffuse Inputs")
 
 writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
-saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV3c.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV4.xlsx"), overwrite = T)
 ```
