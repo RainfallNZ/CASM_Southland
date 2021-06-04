@@ -6,6 +6,8 @@ output: html_notebook
 load some libraries
 ```{r}
 if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+
+if (!require(sf)) install.packages('sf'); library(sf) #needed to get the projection information on the raster in a reasonable format using the st_crs() function
 if (!require(ggplot2)) install.packages("ggplot2"); library(ggplot2)                #used for plotting
 if (!require(gridExtra)) install.packages("gridExtra"); library(gridExtra)                #Used for plotting multiple plots to output
 if (!require(plyr)) install.packages("plyr"); library(plyr)                #used for the join function
@@ -19,6 +21,8 @@ if (!require(devtools)) install.packages("devtools"); library(devtools)         
 if (!require(tictoc)) install.packages("tictoc"); library(tictoc)                         #used for timing processing
 if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
+if (!require(gdalUtils)) install.packages("gdalUtils"); library(gdalUtils)                #dependency of CASMPrePostProcessor
+if (!require(cleangeo)) install.packages("cleangeo"); library(cleangeo)                #dependency of CASMPrePostProcessor
 if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
 source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\RECReachNaming.R")
 
@@ -65,16 +69,11 @@ return(NetworkLabelList)
 
 Set directories and data file names
 ```{r}
-#Set the project directory
 ProjectDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling"       #Tim Kerr's Windows Home laptop
-
-#Set the data directory
 DataDirectory     <- file.path(ProjectDirectory, "Data")
-
-#Set the GIS directory
 GISDataDirectory  <- file.path(DataDirectory,"GIS")
 
-#Set some R data filenames from the LWP data store
+#Set some R data file names from the LWP data store
 REC_MeanFlowFile <- file.path(DataDirectory,"REC2MeanFlow.RData")  #This is an RData file
 REC2UtilityFile <- file.path(DataDirectory,"REC2Utility.rdata")  #This contains a dataframe called REC2Utility, which has a whole bunch of REC2 attributes, including river names
 REC2UtilityExtraFile <- file.path(DataDirectory,"FINAL_REC2_FOR_PREDICTIONS.Rdata")  #This contains a dataframe called REC2, which has a whole bunch of additional REC2 attributes, 
@@ -412,7 +411,7 @@ WaiauFlowCorrection <- data.frame(nzsegment = MainstemReaches, QMean = Mainstemf
 
 
 Create a bunch of points that represent reaches of sub-catchment confluences over a certain strahler order.
-Remove any duplicate sites or sites manually deemed unnecesary as listed in the "unnecesary" file
+Remove any duplicate sites or sites manually deemed unnecessary as listed in the "unnecessary" file
 Add some extra points that have been manually selected and are listed in the "Extrasites" file
 ```{r}
 SubCatchmentConfluenceReaches <- ReachJunctionFinderByOrder(RECReachNetwork@data,OrderThreshold = 5)
@@ -851,6 +850,9 @@ if (!DiffuseSourceAreasOK) {
 #Create an intersection of the Diffuse source area and landuse data by using raster maths.
 #Load the landuse raster data
 LandUseRaster <- stack(PredictorRasterFile)[[1]]
+#Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
+crs(LandUseRaster) <- sf::st_crs(2193)$wkt
+
 #While we're here create a lookup table to the landuse classes
 LanduseLUT <- levels(LandUseRaster)[[1]]
 
@@ -870,6 +872,9 @@ DiffuseSourceLanduse <- (DiffuseSourceRaster * 1000) + LandUseRaster
 #Now need to get the leach rates for each of the nzsegment-landuse areas.
 #Load the Leachrate Data
 LeachRateRaster <- stack(LeachRateRasterFile)
+#Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
+crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
+
 #Get the total nitrogen leach rates for each unique combination of source area and land use
 DiffuseLeachRateData <- DiffuseLoadTableCreator(ZoneLanduseLUCRaster = DiffuseSourceLanduse,LeachRates = LeachRateRaster[[1]])
 #rename the leach rate column to be explicitly for total nitrogen (TN)
@@ -988,6 +993,7 @@ MapData <- lapply(SpatialData, spTransform,CRS("+init=epsg:4326"))
 
 if(!exists("PhysiographyRasterWGS84"))PhysiographyRasterWGS84 <- CreatePhysiography(SourceFile = PhysiographicDataFile,Domain = CompleteDomain)
 MapData$Physiography <- PhysiographyRasterWGS84
+crs(MapData$Physiography) <- sf::st_crs(4326)$wkt
 #MapData$WaterPlan <- WaterPlanRasterWGS84
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
@@ -1205,5 +1211,5 @@ addWorksheet(Out, "Diffuse Inputs")
 
 writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
-saveWorkbook(Out, file.path(DataDirectory,"CASM-InputsV4.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV1.xlsx"), overwrite = T)
 ```

@@ -368,7 +368,7 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
 #'@return A dataframe of CASM Node names, CASM tributary, CASM tributary location
 #'@keywords REC River Environment Classification CASM
 #'@export
-CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelList = NetworkLabelList,OutletReachNameLookUpTable = "NULL", TributaryConnectionTable = TributaryConnectionTable, CASMNodes=data.frame(NodeName = c("test","Manawatu at Teachers College"),nzsegment= c(7140020,7239110))){
+CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelList = NetworkLabelList,OutletReachNameLookUpTable = "NULL", TributaryConnectionTable = TributaryConnectionTable, CASMNodes=data.frame(NodeName = c("test","Manawatu at Teachers College"),nzsegment= c(7140020,7239110),stringsAsFactors = FALSE)){
   
   #Make sure the nzsegment attribute is correctly named. This is needed because the RECV2 version available from NIWA has altered attribute names (to meet ESRI column naming limitations)
   #If the nzsegment column is called nzsgmnt then rename it, The NIWA REC2 data has this name.
@@ -419,7 +419,7 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
   })
 
   #Turn the catchment-based list into a data frame
-  CASMNodeTable <- data.frame(t(do.call(cbind,AllTribLocations)))
+  CASMNodeTable <- data.frame(t(do.call(cbind,AllTribLocations)),stringsAsFactors = FALSE)
   #Convert the numbers into numbers
   CASMNodeTable$nzsegment <- as.numeric(CASMNodeTable$nzsegment)
   CASMNodeTable$TribLocn <- as.numeric(CASMNodeTable$TribLocn)
