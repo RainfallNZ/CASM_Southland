@@ -373,7 +373,11 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
   #Make sure the nzsegment attribute is correctly named. This is needed because the RECV2 version available from NIWA has altered attribute names (to meet ESRI column naming limitations)
   #If the nzsegment column is called nzsgmnt then rename it, The NIWA REC2 data has this name.
   names(CASMRECNetwork)[which(names(CASMRECNetwork) == "nzsgmnt")] <- "nzsegment"
-  names(NetworkLabelList)[which(names(NetworkLabelList) == "nzsgmnt")] <- "nzsegment"
+  #names(NetworkLabelList)[which(names(NetworkLabelList) == "nzsgmnt")] <- "nzsegment"
+  NetworkLabelList <- lapply(NetworkLabelList, function(SingleNetwork){
+    names(SingleNetwork)[which(names(SingleNetwork) == "nzsgmnt")] <- "nzsegment"
+    SingleNetwork
+  })
   names(CASMNodes)[which(names(CASMNodes) == "nzsgmnt")] <- "nzsegment"
   names(TributaryConnectionTable)[which(names(TributaryConnectionTable) == "nzsgmnt")] <- "nzsegment"
 
@@ -413,12 +417,12 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
     
     
   })
-  
+
   #Turn the catchment-based list into a data frame
   CASMNodeTable <- data.frame(t(do.call(cbind,AllTribLocations)))
   #Convert the numbers into numbers
-  CASMNodeTable$nzsegment <- as.numeric(levels(CASMNodeTable$nzsegment))[CASMNodeTable$nzsegment]
-  CASMNodeTable$TribLocn <- as.numeric(levels(CASMNodeTable$TribLocn))[CASMNodeTable$TribLocn]
+  CASMNodeTable$nzsegment <- as.numeric(CASMNodeTable$nzsegment)
+  CASMNodeTable$TribLocn <- as.numeric(CASMNodeTable$TribLocn)
   CASMNodeTable$TribName <- as.character(CASMNodeTable$TribName)
   CASMNodeTable$CASMNodeName <- as.character(CASMNodeTable$CASMNodeName)
   return(CASMNodeTable)
