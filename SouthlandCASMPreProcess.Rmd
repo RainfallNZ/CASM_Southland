@@ -25,6 +25,7 @@ if (!require(gdalUtils)) install.packages("gdalUtils"); library(gdalUtils)      
 if (!require(cleangeo)) install.packages("cleangeo"); library(cleangeo)                #dependency of CASMPrePostProcessor
 if (!require(CASMPrePostProcessor)) install_github("rainfallnz/CASMPrePostProcessor"); library(CASMPrePostProcessor)                #Needed to load libraries from github
 source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\RECReachNaming.R")
+source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\CASMToSCAMP.R")
 
 ```
 
@@ -107,8 +108,10 @@ PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/Precipitati
 
 #Set the name of raster file data in geoTiff format
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
-LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRaster 250 x 250.tif")
-PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
+#LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV2 250 x 250.tif")
+LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV3 250 x 250.tif") #upgraded after provision of Version 3 look up table
+#PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
+PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRasterV3 250 x 250.tif") #upgraded after provision of Version 3 look up table
 PhysiographyBasedAttenuationEstimatesFile <- file.path(GISDataDirectory,"PhysioAttenuationEstimates 250 x 250.tif")
 
 #Set the names of some text tables in csv format
@@ -131,7 +134,8 @@ CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocat
 
 
 #Set the names of some Excel workbooks
-LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
+#LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
+LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V3_1.xlsx")   #Updated early June 2021
 PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Attenuation Estimates.xlsx")
 #Water quality load data updated for location shifts
 WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
@@ -360,8 +364,8 @@ LeachRateRaster <- stack(LeachRateRasterFile)
 # #And save it for nexttime
 # writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
 # writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
-# 
-# #******************************************************************
+
+#******************************************************************
 
 #Load the Physiography-based attenuation estimates
 PhsioAttenEstRaster <- stack(PhysiographyBasedAttenuationEstimatesFile)
@@ -376,7 +380,7 @@ PhsioAttenEstRaster <- stack(PhysiographyBasedAttenuationEstimatesFile)
 #toc()
 #And save it for nexttime
 #writeRaster(PhsioAttenEstRaster,PhysiographyBasedAttenuationEstimatesFile,overwrite=TRUE)
-# 
+#
 # #******************************************************************
 
 ```
@@ -1246,5 +1250,5 @@ addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=6,rows=2,style=subheadingstyl
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
 
 
-saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV2.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV3.xlsx"), overwrite = T)
 ```

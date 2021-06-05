@@ -1,4 +1,4 @@
-#' A function to combine spatial data sources of land use, soil drainage, slope and precipitation/irrigation, and uses them to lookup leach rates based on an Environment Southland designation.
+#' A function to combine spatial data sources of land use, soil drainage, slope and precipitation/irrigation, and uses them to look up leach rates based on an Environment Southland designation.
 #'
 #'This function generates a raster object of leach rates
 #'
@@ -6,7 +6,7 @@
 #'@param SoilDrainageData A spatial data file (in ESRI polygon shapefile format) of the soil drainage class, as provided by Environment Southland.
 #'@param SlopeClassData A spatial data file (in ESRI polygon shapefile format) of the slope classification, as provided by Environment Southland.
 #'@param PrecipIrrig A spatial data file (in ESRI polygon shapefile format) of the precipiation/irrigation classification, as provided by Environment Southland.
-#'@param LeachRateData An Excel (.xlsx) file with 4 columns providing: "Land Use";"Landscape Category";"Soil drainage";"Slope Class";"Precip (><1000mm)". Then a further 4 columns: "N loss (mean)";"N loss (median)"; "P loss (mean)"; "P loss (median)"
+#'@param LeachRateData An Excel (.xlsx) file with 4 columns providing: "Land Use";"Landscape Category";"Soil drainage";"Slope Class";"Precipitation". Then a further 2 columns: "N loss (mean)"; "P loss (mean)"
 #'@param Resolution The horizontal resolution in metres. Default is 250 m
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster object of leach rates
@@ -25,15 +25,11 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
   if (!require(openxlsx)) install.packages("openxlsx"); library(openxlsx)                #used for reading Excel data
   
-  #Load lookup table of leaching rates based on land use, soil drainage, slope, and precipiation/irrigation
+  #Load look up table of leaching rates based on land use, soil drainage, slope, and precipiation/irrigation
   LeachRateLookUpTable<- read.xlsx(LeachRateData)
-  #Check for duplicates!! This has ocurred in the past and caused an error later on which took hours to figure out!
+  #Check for duplicates!! This has occurred in the past and caused an error later on which took hours to figure out!
   LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
   
-  #Fill in the missing median values for the "All" rows to match the "mean" values
-  #LeachRateLookUpTable$`N.loss.(median)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)] <-  LeachRateLookUpTable$`N.loss.(mean)`[is.na(LeachRateLookUpTable$`N.loss.(median)`)]
-  #LeachRateLookUpTable$`P.loss.(median)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)] <-  LeachRateLookUpTable$`P.loss.(mean)`[is.na(LeachRateLookUpTable$`P.loss.(median)`)]
- 
   #Expand any "All" rows to have a row for each possible combination
   #Repeat for each of the class types
   for (ClassColumn in c("Soil.Drainage","Slope","Precipitation")){
@@ -69,6 +65,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
   RasterBase <- raster(resolution = Resolution, ext = extent(Domain), crs = proj4string(Domain) )
   PrecipIrrigRaster <- rasterize(PrecipIrrigSpatial,RasterBase,"Precip2")
+  
   #Crop to the Complete domain, and then mask to the same
   PrecipIrrigRaster <- crop(PrecipIrrigRaster,extent(Domain))
   PrecipIrrigRaster <- mask(PrecipIrrigRaster, Domain)
