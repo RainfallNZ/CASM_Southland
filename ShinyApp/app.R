@@ -3,11 +3,15 @@ if (!require(leaflet)) install.packages("leaflet"); library(leaflet)
 if (!require(htmltools)) install.packages("htmltools"); library(htmltools)
 if (!require(raster)) install.packages("raster"); library(raster)
 if (!require(rgdal)) install.packages("rgdal"); library(rgdal)
+if (!require(sf)) install.packages('sf'); library(sf) #needed to get the projection information on the raster in a reasonable format using the st_crs() function
 if (!require(grDevices)) install.packages("grDevices"); library(grDevices)
 
 MapData <- readRDS("Data/SpatialData.RDS")
 #map <- readRDS("Data/map.RDS")
 
+#Set the nonline map source to TOPO NZ maps
+NZTopo250 = 'http://tiles-a.data-cdn.linz.govt.nz/services;key=8ed417cc81ea45a0b92d597307229b80/tiles/v4/layer=52324/EPSG:3857/{z}/{x}/{y}.png'
+NZTopo50 = 'http://tiles-a.data-cdn.linz.govt.nz/services;key=8ed417cc81ea45a0b92d597307229b80/tiles/v4/layer=52343/EPSG:3857/{z}/{x}/{y}.png'
 
 MeasurementSiteLabels <- lapply(seq(nrow(MapData$MeasurementSites@data)), function(i) {
   paste0("Measurement site:", '</br>', 
@@ -59,7 +63,10 @@ TeAoMaramaSiteLabels <- lapply(seq(nrow(MapData$TeAoMaramaSites@data)), function
 
 #Setup the map
 map <- leaflet::leaflet() %>% 
-  leaflet::addProviderTiles(providers$OpenStreetMap) %>%
+  addTiles(urlTemplate = NZTopo250, options = providerTileOptions(maxZoom=12),attribution = "<a href=\"http://https://www.linz.govt.nz/\">LINZ</a>", group = "LINZ Topographic") %>%
+  addTiles(urlTemplate = NZTopo50, options = providerTileOptions(minZoom=12), group = "LINZ Topographic") %>%
+
+#  leaflet::addProviderTiles(providers$OpenStreetMap) %>%
   setView(lng=168,lat=-46.0,zoom=9)
 
 #Add the main catchments

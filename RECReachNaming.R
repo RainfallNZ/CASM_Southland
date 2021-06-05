@@ -540,15 +540,18 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
 #'@keywords physiography, southland
 #'@export
 CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = CompleteDomain){
+
   #Load the physiography spatial polygon data
-  Physiography <- readOGR(SourceFile)
+  Physiography <- readOGR(SourceFile, stringsAsFactors = TRUE)
   
   #Explicitly set the projection to NZTM
-  Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+  #Physiography <- spTransform(Physiography,CRS("+init=epsg:2193") )
+  Physiography <- spTransform(Physiography,CRSobj=CRS(SRS_string = "EPSG:2193") )
   
   #Convert to a raster with an attribute table, and  for mapping later on
   #Convert to raster, note the creation of a base raster in WGS84, which all subsequent raster's align to
-  RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
+  #RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = proj4string(Domain) )
+  RasterBase <- raster(resolution = 250, ext = extent(Domain), crs = wkt(Domain) )
   PhysiographyRaster <- rasterize(Physiography,RasterBase,"Physiograp")
   #Crop to the Complete domain, and then mask to the same
   PhysiographyRaster <- crop(PhysiographyRaster,extent(Domain))
@@ -558,7 +561,8 @@ CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = Compl
   #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
   #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
   
-  PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+ # PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+  PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS(SRS_string = "EPSG:4326"),method = "ngb")
   PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
   PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
   PhysiographyRAT$Physiography <- levels(Physiography$Physiograp)
