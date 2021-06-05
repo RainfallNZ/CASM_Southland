@@ -944,6 +944,7 @@ DiffuseInputsSiteExtendedTable <- DiffuseLeachRateDataUnique
 #rename the columns to match the CASM conventions
 names(DiffuseInputsSiteExtendedTable) <- c("Node Name","nzsegment","Site Name or No.","Receiving Stream","Original location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Export Coeff (kg/ha/yr)","TP Physiographic-based attenuation scale estimate","CASMBasin","Discharge Location (km)")
 
+SCAMPFormattedDiffuseOutput <- CASMToSCAMP(DiffuseInputsSiteExtendedTable)
 ```
 
 
@@ -1211,5 +1212,39 @@ addWorksheet(Out, "Diffuse Inputs")
 
 writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
 
-saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV1.xlsx"), overwrite = T)
+#New sheets for SCAMP
+
+hs1 <- createStyle(textDecoration = 'bold')
+hs2 <- createStyle(textDecoration = 'bold', wrapText = TRUE)
+subheadingstyle1 <- createStyle(textDecoration = c('bold','italic'))
+OnsSD <- createStyle(numFmt = "0.0")
+
+
+addWorksheet(Out, "Catchment Physical Inputs")
+writeData(Out,sheet = "Catchment Physical Inputs",x = SCAMPFormattedDiffuseOutput$AreaTable,startRow = 3, headerStyle = hs1)
+writeData(Out,sheet = "Catchment Physical Inputs",x = 'Landuse Distribution (%)', xy = c(6,2))
+setColWidths(Out,sheet = "Catchment Physical Inputs",cols =1:3,widths = 'auto')
+addStyle(Out,sheet = "Catchment Physical Inputs",cols=4:15,rows=3,style=hs2)
+addStyle(Out,sheet = "Catchment Physical Inputs",cols=6,rows=2,style=subheadingstyle1)
+addStyle(Out,sheet = "Catchment Physical Inputs",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$AreaTable)+3),gridExpand = TRUE, style=OnsSD)
+
+
+addWorksheet(Out, "Catchment WQ Inputs TN")
+writeData(Out,sheet = "Catchment WQ Inputs TN",x = SCAMPFormattedDiffuseOutput$NTable,startRow = 3, headerStyle = hs1)
+writeData(Out,sheet = "Catchment WQ Inputs TN",x = 'Export Coefficients (kg/ha/yr)', xy = c(6,2))
+setColWidths(Out,sheet = "Catchment WQ Inputs TN",cols =c(1:3),widths = 'auto')
+addStyle(Out,sheet = "Catchment WQ Inputs TN",cols=c(4:15),rows=3,style=hs2)
+addStyle(Out,sheet = "Catchment WQ Inputs TN",cols=6,rows=2,style=subheadingstyle1)
+addStyle(Out,sheet = "Catchment WQ Inputs TN",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
+
+addWorksheet(Out, "Catchment WQ Inputs TP")
+writeData(Out,sheet = "Catchment WQ Inputs TP",x = SCAMPFormattedDiffuseOutput$PTable,startRow = 3, headerStyle = hs1)
+writeData(Out,sheet = "Catchment WQ Inputs TP",x = 'Export Coefficients (kg/ha/yr)', xy = c(6,2))
+setColWidths(Out,sheet = "Catchment WQ Inputs TP",cols =c(1:3),widths = 'auto')
+addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=c(4:15),rows=3,style=hs2)
+addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=6,rows=2,style=subheadingstyle1)
+addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
+
+
+saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV2.xlsx"), overwrite = T)
 ```
