@@ -131,7 +131,7 @@ PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegment
 TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory,"RECV2ReachNameExtras.csv")
 CASMBasinLookupTableFile<- file.path(DataDirectory,"CASMBasinToSouthlandFMULookupTable.csv")
-CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocation.csv")
+CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV2.csv")
 
 
 #Set the names of some Excel workbooks
@@ -1260,5 +1260,5 @@ addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=6,rows=2,style=subheadingstyl
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
 
 
-saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV3.xlsx"), overwrite = T)
+saveWorkbook(Out, file.path(DataDirectory,"SCAMP-InputsV3b.xlsx"), overwrite = T)
 ```
