@@ -1,3 +1,76 @@
+#SCAMP Functions
+
+#' Compare water management sub zone loads between two CASM input files
+#'
+#' LoadComparer returns the difference in loads for each water management sub zone of two CASM input files
+#'
+#' This function is intended for use to check how the loads, described by the "Diffuse Inputs"
+#' sheet in each CASM input spreadsheet, differ. 
+#' @param CASMFiles A vector of file names of the CASM input files to be compared
+#' @return A dataframe with absolute difference and percent difference of management sub-zone loads.
+#' @examples
+#' LoadComparer(CASMFiles = c(file.path(DataDirectory,"CASM-Inputs_SEL_Scenario_3b_IntensiveTable14_2Year20OrConsentedWithCoxCalibrated.xlsx"),SecondCASMFIle = file.path(DataDirectory,"Test.xlsx")))
+LoadComparer <- function(CASMFiles = c("CASMInputData1.xlsx","CASMInputData2.xlsx")){
+
+  #Read the "Diffuse Inputs" tab from each input spreadsheet
+  ZoneLoadList <- lapply(CASMFiles, function(CASMFile){
+    DiffuseData <- read.xlsx(CASMFile,sheet = "Diffuse Inputs")
+    DiffuseData$Zone_Code <- sub("-.*$","",DiffuseData$Node.Name)
+    DiffuseData$load <- DiffuseData$`Land.Area.(ha)` * DiffuseData$`TN.Export.Coeff.(kg/ha/yr)`
+    ZoneLoads <- ddply(DiffuseData, "Zone_Code", function(x) sum(x$load, na.rm=TRUE))
+    return(ZoneLoads)
+  })
+  CombinedZones <- merge(ZoneLoadList[[1]],ZoneLoadList[[2]],by="Zone_Code")
+  CombinedZones$AbsDiff <- CombinedZones[,3] - CombinedZones[,2]
+  CombinedZones$PctDiff <- round(CombinedZones$AbsDiff/CombinedZones[,2]*100,1)
+  return(CombinedZones)
+}
+
+#' Label stream reaches
+#' 
+#' This function names reach segments with real-world names.
+#' Some names are looked up using the RECReachNamer() function. These
+#' names need to be manually checked.
+#' The rest are manually named using the NetworkNamer() function.
+#' @parma RECV2Network a spatial river network
+#' @param ExtraRECReachLabelsFile A two column csv file of RECV2 nzsegment numbers 
+#' and related names. Columns must be called "nzsegment" and "name" respectively
+#' @param EstuarySites A dataframe that must include a column of nzsegment numbers 
+#' and of Estuary names. Columns must be called "nzsegment" and "Name" respectively.
+#' @return a labelled version of the spatial river network
+
+NetworkLabeller <- function(RECV2Network = CompleteSpatialNetwork,
+                            ExtraRECReachLabelsFile = NA,
+                            EstuarySites = NA){
+
+  #Name as much as possible from the LINZ river naming spatial data sets
+  NamedCompleteSpatialNetwork <- RECReachNamer(RECV2Network = RECV2Network)
+  
+  #Talk amongst yourselves while this layer is manually checked in QGIS
+  #st_write(NamedCompleteSpatialNetwork, "CASM-StreamNetworkForNaming", driver="ESRI Shapefile",overwrite_layer=TRUE)
+  
+  #Load in the csv file with a direct nzsegment-to-name relationship (manually prepared!)
+  ExtraRECReachLabels <- read.table(ExtraRECReachLabelsFile,sep=",",stringsAsFactors = FALSE, header=TRUE)
+  
+  #Use this to update the names
+  IndexOfNamesToUpdate <- which(NamedCompleteSpatialNetwork$nzsegment %in% ExtraRECReachLabels$nzsegment)
+  NamedCompleteSpatialNetwork$name[IndexOfNamesToUpdate] <- ExtraRECReachLabels$name[match(NamedCompleteSpatialNetwork$nzsegment[IndexOfNamesToUpdate],ExtraRECReachLabels$nzsegment)]
+  
+  #Use the estuary sites list to update any reaches that don't already have a name (useful for all the outlet reaches)
+  #Find which of the estuary reach numbers need updating
+  EstuaryReachesToBeUpdated <- which(NamedCompleteSpatialNetwork$nzsegment %in% EstuarySites$nzsegment & NamedCompleteSpatialNetwork$name %in% c("TBC",NA))
+  #Then update them
+  NamedCompleteSpatialNetwork$name[EstuaryReachesToBeUpdated] <- EstuarySites$Name[match(NamedCompleteSpatialNetwork$nzsegment[EstuaryReachesToBeUpdated],EstuarySites$nzsegment)]
+  
+  #Name all remaining reaches by checking  the name immediately downstream or by getting manual input
+  NetworkLabelList <- NetworkNamer(RECNetwork = NamedCompleteSpatialNetwork)
+  
+  #Add the tributary labels to the network
+  #SegmentToLabelLookUpTable <- do.call(rbind,NetworkLabelList)
+  #RECV2Network@data$Label <- SegmentToLabelLookUpTable$name[match(RECV2Network@data$nzsegment,SegmentToLabelLookUpTable$nzsegment)]
+  return(NetworkLabelList)
+}
+
 #' A function to name REC reaches
 #'
 #'This function accepts a vector of RECV2 river network as a spatial data frame and does it's best to name the reaches through using the \href{https://data.linz.govt.nz/layer/103631-nz-river-name-polygons-pilot/}{LINZ name polygons} and \href{https://data.linz.govt.nz/layer/103632-nz-river-name-lines-pilot/}{LINZ name lines} data
@@ -43,7 +116,7 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
   #1/ The name is "TBC" indicating it needs to be confirmed manually
   #2/ If an immediately upstream reach is named the same as the downstream reach (and they don't also have clashes) then this is the name to use
   #3/ If a sibling reach has the same name as the downstream reach (and they don't also have name clashes) then the name is the choice that is NOT the downstream name
- 
+  
   ClashNames <- sapply(NameClashIndices, function(NameClashIndex){
     
     #Get the possible names
@@ -52,7 +125,7 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
     #Other clash indices except this one
     OtherClashIndices <- NameClashIndices[NameClashIndices != NameClashIndex]
     
-     #Find the name of the reach immediately downstream
+    #Find the name of the reach immediately downstream
     DownstreamName <- NamedNetwork$name[NamedNetwork$FROM_NODE == NamedNetwork$TO_NODE[NameClashIndex]]
     
     #Find the upstream names
@@ -62,7 +135,7 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
     SiblingIndices <- which(NamedNetwork$TO_NODE == NamedNetwork$TO_NODE[NameClashIndex])
     SiblingName <- NamedNetwork$name[SiblingIndices[SiblingIndices != NameClashIndex]]
     #SiblingName <- NamedNetwork$name[NamedNetwork$TO_NODE == NamedNetwork$TO_NODE[NameClashIndex]]
- 
+    
     #Check for sequential clashes, as this indicates manual intervention is required 
     #Check if the reach immediately downstream has a name clash
     DownstreamClash <- which(NamedNetwork$FROM_NODE == NamedNetwork$TO_NODE[NameClashIndex]) %in% OtherClashIndices
@@ -80,7 +153,7 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
     #If an upstream and downstream names are the same
     #I need to "sum" the condition in case some of the arguments don't exist
     if (sum(DownstreamName %in% UpstreamNames & !UpstreamClash & !DownstreamClash & !is.na(DownstreamName))) Name <- DownstreamName
-
+    
     #Rule 3
     #If a sibling has the same name as the downstream name, then remove that name from the options and allocate the other name.
     #I need to "sum" the condition in case some of the arguments don't exist
@@ -89,16 +162,16 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
     return(Name)
   })
   NamedNetwork$name[NameClashIndices] <- ClashNames  
-
+  
   #Find siblings named the same and resolve them
   SiblingToNodes <- unique(NamedNetwork$TO_NODE[which(duplicated(NamedNetwork$TO_NODE))])
   
-#Loop through the siblings and correct them where possible, and allocating a "TBC" to the name where not.
+  #Loop through the siblings and correct them where possible, and allocating a "TBC" to the name where not.
   #The rules are
   #1/ If the named reaches immediately upstream of the siblings have different names, and one of them matches the 
   # sibling name and the downstream name (if it exists), then rename the other sibling to match the other upstream name
   #2/ If one of the upstream names is not known, rename its sibling as "TBC"
-    
+  
   for (SiblingToNode in SiblingToNodes) {
     
     #Find the cases where the names for siblings are the same. Do this by testing to see if there is only one unique name in the sibling name set
@@ -138,19 +211,19 @@ RECReachNamer <- function(RECV2Network, LINZNameLinesFile="D:\\Projects\\LWP\\So
     } #end of renaming test if condition
   } #end of for loop
   
-
+  
   #Check for gaps in naming
   #In some cases a name is missing even though the reaches immediately upstream and downstream have names. In these cases, allocating a name to the unnmaed reach can be done
   #Start by identifying all the reaches that do not have a name
   UnnamedIndices <- which(is.na(NamedNetwork$name))
-   #work through them and name them if possible
+  #work through them and name them if possible
   for (UnnamedIndex in UnnamedIndices) {
     #Get the Upstream name(s)
     UpstreamName <- NamedNetwork$name[NamedNetwork$TO_NODE == NamedNetwork$FROM_NODE[UnnamedIndex]]
     
     #Get the downstream name
     DownstreamName <- NamedNetwork$name[NamedNetwork$FROM_NODE == NamedNetwork$TO_NODE[UnnamedIndex]]
-
+    
     #rename the reach of interest if one of the upstream reaches has the same name as the downstream reach
     if(sum(DownstreamName %in% UpstreamName & (sum(!is.na(DownstreamName)) != 0)) == 1) NamedNetwork$name[UnnamedIndex] <- DownstreamName
   }
@@ -173,7 +246,7 @@ NetworkNamer <- function(RECNetwork=MyREC){
   
   #If the nzsegment column is called nzsgmnt then rename it, The NIWA REC2 data has this name.
   names(RECNetwork)[which(names(RECNetwork) == "nzsgmnt")] <- "nzsegment"
-
+  
   #Find the row indices of all the outlet reach's by finding which "to" nodes  don't have a corresponding "from" node
   OutletReachIndices <- which(!RECNetwork$TO_NODE %in% RECNetwork$FROM_NODE)
   #names(OutletReachIndices) <- 1:length(OutletReachIndices)
@@ -183,7 +256,7 @@ NetworkNamer <- function(RECNetwork=MyREC){
   
   #Crawl each network in turn
   ReachNames <- lapply(OutletReachIndices, function(OutletReachIndex) {
- 
+    
     #Initialise the list of name details
     RowNumber          <- 1
     CurrentName       <- RECNetwork$name[OutletReachIndex]
@@ -191,7 +264,7 @@ NetworkNamer <- function(RECNetwork=MyREC){
       RECNetwork$name[OutletReachIndex] <- dlg_input(message = paste("Reach Name for nzsegment",RECNetwork$nzsegment[OutletReachIndex]) , default = "", gui = .GUI)$res
       CurrentName <- RECNetwork$name[OutletReachIndex]
     }  
-
+    
     names             <- data.frame(nzsegment=as.numeric(NA),name=as.character(NA),stringsAsFactors = FALSE)
     names[RowNumber,] <- list(RECNetwork$nzsegment[OutletReachIndex],CurrentName)
     
@@ -213,7 +286,7 @@ NetworkNamer <- function(RECNetwork=MyREC){
           RECNetwork$name[upstream_indices[1]] <- dlg_input(message = paste("Reach Name for nzsegment",RECNetwork$nzsegment[upstream_indices[1]]) , default = "", gui = .GUI)$res
           #And update the name being collected for the nzsegment to name table
           #CurrentName <- RECNetwork$name[CurrentReachIndex]
-          }
+        }
         #Check the name of the other branch
         if(RECNetwork$name[upstream_indices[2]] %in% c("TBC",NA)) {     #get a name from the audience
           #Update the network data as well. Note that the nzsegment to name table does not nee to be updated for this reach here, as it will be crawled later on
@@ -221,14 +294,14 @@ NetworkNamer <- function(RECNetwork=MyREC){
         } 
         #Under the condition it is not a branch , check if the name is missing.
         #If the name is not missing, get the name
-        } else if(!RECNetwork$name[CurrentReachIndex] %in% c("TBC",NA)){CurrentName <- RECNetwork$name[CurrentReachIndex]} else 
-          #If the name is missing, use the name immediately downstream
-        { RECNetwork$name[CurrentReachIndex] <- RECNetwork$name[which(RECNetwork$FROM_NODE==RECNetwork$TO_NODE[CurrentReachIndex])]
-          #CurrentName <- RECNetwork$name[which(RECNetwork$FROM_NODE==RECNetwork$TO_NODE[CurrentReachIndex])]
-          }
- 
+      } else if(!RECNetwork$name[CurrentReachIndex] %in% c("TBC",NA)){CurrentName <- RECNetwork$name[CurrentReachIndex]} else 
+        #If the name is missing, use the name immediately downstream
+      { RECNetwork$name[CurrentReachIndex] <- RECNetwork$name[which(RECNetwork$FROM_NODE==RECNetwork$TO_NODE[CurrentReachIndex])]
+      #CurrentName <- RECNetwork$name[which(RECNetwork$FROM_NODE==RECNetwork$TO_NODE[CurrentReachIndex])]
+      }
+      
       names[RowNumber,] <- list(RECNetwork$nzsegment[CurrentReachIndex],RECNetwork$name[CurrentReachIndex])
-
+      
       upstream_indices   <- which(RECNetwork$TO_NODE==RECNetwork$FROM_NODE[CurrentReachIndex])
       
       #Check if there are no more upstream reaches
@@ -271,11 +344,11 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
   names(RECNetwork)[which(names(RECNetwork) == "LENGTHD")] <- "LENGTHDOWN"
   
   
-
+  
   #This function works through "independent catchments" which are defined as networks that are not connected, with their own outlet
   #For each independent catchment, figure out where the tributaries connect to their parent tributary.
   CatchmentTribLinkages <- lapply(seq_along(TributaryLabelList), function(CatchmentIndex) {
-
+    
     #Get the tributary labels for all REC reaches within the current independent catchment
     CatchmentTribLabels <- TributaryLabelList[[CatchmentIndex]]
     
@@ -296,7 +369,7 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
     #the highest nzsegment below the tributary and 
     #the label of the tributary below (i.e. the confluence name)
     AllDistances <- sapply(UniqueTribs, function(TribLabel) {
-
+      
       #Get the REC data for the current tributary
       ReachData <- RECNetwork[RECNetwork$nzsegment %in% CatchmentTribLabels$nzsegment[CatchmentTribLabels$label == TribLabel],]
       
@@ -328,11 +401,11 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
         TributaryLocations <-  RECNetwork$headw_dist[RECNetwork$nzsegment == ReachBelow]
       }
       
-
+      
       
       return(c(TribConnectionTotalDistance,LowestReach,ReachBelow,TribBelow,TributaryLocations))
     })
-
+    
     #If the tributary locations are to be provided based on distances downstream, then update them.
     if (!HeadwaterDist){
       #Find the distance of a confluence above the previous confluence. So the LENGTHDOWN of the bottom of the parent tributary needs to be subtracted from the LENGTHDOWN of the current tributary. This is achieved by using the tributary values just created for each catchment.
@@ -340,10 +413,10 @@ TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, Trib
         CorrectedDistance <- x[1] - ConfluenceTotalDistances[1,x[4]]
       })
     }
-
+    
     #These confluence distances are added as a row to the rest of the tributary information
     #AllDistances[TributaryLocations,] <- ConfluenceCorrectedDistances
-
+    
     #Lastly, just the useful information is retained, and the labels are formatted to distinguish one catchment from another
     #I now want the tributary label, and the distance along the parent tributary, and the parent tributary label
     TributaryDetails <- data.frame("nzsegment"=AllDistances[2,],"Tributary Name" =colnames(AllDistances), "Confluence Stream" = AllDistances[4,], "Confluence Location (km)" = round(as.numeric(AllDistances[5,])/1000,0), check.names = FALSE, stringsAsFactors = FALSE)
@@ -380,10 +453,10 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
   })
   names(CASMNodes)[which(names(CASMNodes) == "nzsgmnt")] <- "nzsegment"
   names(TributaryConnectionTable)[which(names(TributaryConnectionTable) == "nzsgmnt")] <- "nzsegment"
-
+  
   #Work through each catchment
   AllTribLocations <- lapply(NetworkLabelList, function(SingleCatchmentNetworkLabels) {
-
+    
     #Get the catchment name from the reach with the smallest DOWNSTREAM attribute
     SingleCatchmentIndices <- which(CASMRECNetwork$nzsegment %in% SingleCatchmentNetworkLabels$nzsegment)
     CatchmentName <- CASMRECNetwork$Label[SingleCatchmentIndices][which.min(CASMRECNetwork$LENGTHDOWN[SingleCatchmentIndices])]
@@ -391,20 +464,20 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
     #But overwrite this if an OutletReachNameLookUpTable has been provided
     #Lookup the catchment name based on the OutletReachNames look up table. Assume that only one reach in the OutletReachName look up table will match the reach numbers in the tributary.
     if (!OutletReachNameLookUpTable == "NULL") CatchmentName <- OutletReachNameLookUpTable$Name[OutletReachNames$nzsegment %in% CatchmentTribLabels$nzsegment]
-
+    
     #Find which CASMNodes are within the current catchment
     CatchmentNodes <- CASMNodes[(CASMNodes$nzsegment %in% SingleCatchmentNetworkLabels$nzsegment),]
     
     #Work through all the Nodes that are in this catchment
     if (nrow(CatchmentNodes) > 0) {
-
+      
       #For each node find the outlet reach, and then get the distance.
       TribLocations <- sapply(seq_along(CatchmentNodes$NodeName), function(NodeIndex){
-
+        
         CASMNode <- CatchmentNodes[NodeIndex,]
         NodeTribName  <- SingleCatchmentNetworkLabels$name[SingleCatchmentNetworkLabels$nzsegment == CASMNode$nzsegment]
-
-
+        
+        
         #Find the headwater distance of the node's reach 
         TributaryLocations <-  CASMRECNetwork$headw_dist[CASMRECNetwork$nzsegment == CASMNode$nzsegment]
         #Extra special case for nzsegment 15273072, which is wrong! Part of the Oreti/Acton confluence REC upgrade.
@@ -417,7 +490,7 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
     
     
   })
-
+  
   #Turn the catchment-based list into a data frame
   CASMNodeTable <- data.frame(t(do.call(cbind,AllTribLocations)),stringsAsFactors = FALSE)
   #Convert the numbers into numbers
@@ -446,7 +519,7 @@ CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork
   NodeWatersheds <- st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),])
   #Get the entire catchment for each node
   CompleteCatchments <- lapply(CASMNodes, function(CASMNode){
-
+    
     CatchmentReaches <- CASMNode
     Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE == RECNetwork$FROM_NODE[RECNetwork$nzsegment == CASMNode])]
     while(length(Upstreamreaches) > 0){
@@ -456,7 +529,7 @@ CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork
     NodeCatchment <- st_union(st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),]))
     return(NodeCatchment)
   })
-
+  
   #Figure out which part of the catchment is associated with the node, excluding upstream node catchments.
   IntersectedCatchments <- CompleteCatchments %>% do.call(c,.) %>% #Combined the node catchments into one spatial object
     st_intersection() %>%                                          #intersect them so the catchments are not nested. This is sort of like generating watersheds for just the reaches of interest
@@ -485,14 +558,14 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
-
-
+  
+  
   #rasterize the diffuse source area spatial data, aligning to the Landuse data
   DiffuseSourceRaster <- rasterize(DiffuseSourceAreas, LanduseData, "nzsegment")
   
   #Calculate a new raster by adding the nzsegment value to a tenth of the landuse class.
   #This leads to 88888888888.1, 888888888.2 etc
-
+  
   #Create a raster brick with all the parameters needed to determine the leach rate from the look up table
   PredictorRasters <- brick(LanduseRaster,SoilDrainageRaster,SlopeClassRaster,PrecipIrrigRaster)
   names(PredictorRasters) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
@@ -540,7 +613,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
 #'@keywords physiography, southland
 #'@export
 CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = CompleteDomain){
-
+  
   #Load the physiography spatial polygon data
   Physiography <- readOGR(SourceFile, stringsAsFactors = TRUE)
   
@@ -561,7 +634,7 @@ CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = Compl
   #I don't know the cause. It just goes away when I run the command again. Maybe it is doing stuff on the raster before the raster has been created.
   #A possible solution is to transform the vector to WGS84 straight up, rather than transform the raster. I might need to create a transformed version of complete domain as well.
   
- # PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
+  # PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS("+init=epsg:4326"),method = "ngb")
   PhysiographyRasterWGS84 <- projectRaster(PhysiographyRaster,crs = CRS(SRS_string = "EPSG:4326"),method = "ngb")
   PhysiographyRasterWGS84 <- ratify(PhysiographyRasterWGS84)
   PhysiographyRAT <- levels(PhysiographyRasterWGS84)[[1]]
@@ -585,7 +658,7 @@ CreatePhysiography <- function(SourceFile = PhysiographicDataFile,Domain = Compl
 CreatePhysiographyAttenuationEstimates <- function(PhysiographicFile = PhysiographicDataFile,
                                                    Domain = CompleteDomain, 
                                                    AttenuationLookupTable = PhysiographicAttenuationLookupTableFile){
-
+  
   if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
   #Load the physiography spatial polygon data
   Physiography <- readOGR(PhysiographicFile,stringsAsFactors = FALSE)
@@ -619,3 +692,328 @@ CreatePhysiographyAttenuationEstimates <- function(PhysiographicFile = Physiogra
   return(PhysAtten)
 }
 
+
+
+#' A function to combine spatial data sources of land "types" with potential nutrient loss-rate reductions.
+#'
+#'This function generates a raster object of loss rate reductions
+#'
+#'The data and loss-rate reductions are derived from McDowell, R.W., Monaghan, R.M., 
+#'Smith, C., Manderson, A., Basher, L., Burger, D.F., Laurenson, S., Pletnyakov, P., 
+#'Spiekermann, R., Depree, C., 2021. Quantifying contaminant losses to water from 
+#'pastoral land uses in New Zealand III. What could be achieved by 2035? New Zealand 
+#'Journal of Agricultural Research 64, 390–410. https://doi.org/10.1080/00288233.2020.1844763
+#'
+#'
+#'@param LandTypes A spatial data file of 
+#''typologies' as used in McDowell et al (2020). Requires an attribute called 'Typology' 
+#'that matches the 'Typology' provided in the MitigationLookupTable. These data are ideally
+#'originally sourced from 
+#'https://databox.datacomcloud.co.nz/shares/folder/mYouM1LtlEc/
+#'@param MitigationLookupTable A dataframe of the values to be mapped for each land 
+#''type' (row). The intention was to use data generated from the tables provided in the 
+#'McDowell et al (2020) supplementary material, but any Type-to-fraction-reduction 
+#'data frame will work as long as the 'types' match the types in McDowell et al. (2020).
+#'@param TypologyReclassFile A csv file which lists typologies in the spatial data
+#'that are not in the mitigation data, and provides an equivalent mitigation type.
+#'@param ReferenceRaster A reference raster to align to. Ideally use the loss-rate-raster
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A raster object of 
+#'@keywords Water Quality, CASM, SCAMP, leach
+#'@export
+LossRaterReductionRasterCreator <- function(LandTypes=LanduseShapeFile,
+                                            MitigationLookUpTable=NA,
+                                            TypologyReclassFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterDairyTypeReclass.csv",
+                                            ReferenceRaster = LossRateRaster){
+  
+  if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
+  if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+  if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
+  #browser()
+  #Load the Type reclass table
+  TypeReclassTable <- read.csv(TypologyReclassFile)
+  
+  #reclass the spatial typologies using the TypeReclassTable
+  UpdatedTypologies <- TypeReclassTable$MitigationTypology[match(LandTypes$Typology,TypeReclassTable$SpatialTypology)]
+  LandTypes$Typology[!is.na(UpdatedTypologies)] <- UpdatedTypologies[!is.na(UpdatedTypologies)]
+  
+  #Join the look up table to the spatial data
+  LandTypes$LossRateReduction <- MitigationLookUpTable[match(LandTypes$Typology,MitigationLookUpTable$Typology),2]
+  
+  #Convert the spatial data to raster
+  TypologyRaster <- rasterize(LandTypes,ReferenceRaster,"LossRateReduction")
+  
+  
+  return(TypologyRaster)
+}
+
+#' A function to adjust the leachrate rasters for the Our Land and Water Mitigation scenarios
+#'
+#'This function generates a raster object of adjusted leach rates
+#'
+#'@param LeachRates A raster stack of leach rates. Raster 1 is for N, raster 2 is for P
+#'@param MitigationDataFile A csv file of Our Land and Water mitigation loads. This file
+#'was generated from the tables provided in the McDowell et al (2020) supplementary material.
+#'@param MitigationOfInterest The name of our Land and Water mitigaion scenario to apply.
+#'Currently limited to one of "Potential2015", the default, and "Potential2035",  
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A raster stack of leach rates adjusted by the mitigation scenario 
+#'@keywords Water Quality, CASM, SCAMP, leach
+#'@export
+LeachRateAdjuster <- function(LeachRates=LeachRateRaster,
+                              MitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoads.csv",
+                              MitigationOfInterest = "Potential2015",
+                              DairyLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesDairy\\OLW_Southland_TypologiesDairy.shp",
+                              SheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp"){
+  
+  if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
+  if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+  if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
+  if (!require(sf)) install.packages("sf"); library(sf)                #used for spatial data
+  
+  #Read in the Mitigation data
+  MitigationData <- read.csv(MitigationDataFile, check.names = FALSE)
+  
+  #Read in the Our Land and Water Spatial data, and combine into a single spatial file
+  DairySpatialData <- sf::st_read(dsn = DairyLandTypeSpatialDataFile)
+  SheepAndBeefSpatialData <- sf::st_read(dsn = SheepAndBeefLandTypeSpatialDataFile)
+  
+  #Clean up the sheep and beef typology names to exactly match those in Mitigation Lookup Table
+  SheepAndBeefSpatialData$Typology <- sub("^.*\\. ","",SheepAndBeefSpatialData$Classifica)
+  
+  #Merge spatial data
+  AllTypes <- do.call(rbind,list(DairySpatialData[,c("Typology","geometry")],SheepAndBeefSpatialData[,c("Typology","geometry")]))
+  
+  for (Nutrient in c('N','P')){
+    
+    #Calculate the change in load associated with the mitigation
+    #ColumnsOfInterest <- colnames(MitigationData)[which(grepl(paste0(Nutrient,"_loss"),colnames(MitigationLookUpTable)))]
+    #Select the mitigation scenario of choice.
+    CurrentColumn <-  which(colnames(MitigationData) == paste0("Current",Nutrient,"_loss"))
+    ScenarioColumn <- which(colnames(MitigationData) == paste0(MitigationOfInterest,Nutrient,"_loss"))
+    MitigationData$ScenarioMitigationFraction <- (MitigationData[,CurrentColumn] - MitigationData[,ScenarioColumn]) / MitigationData[,CurrentColumn]
+    MitigationLookUpTable <- MitigationData[,c("Typology","ScenarioMitigationFraction")]  
+    
+    #create the loss rate reduction raster
+    LossRateReductionRaster <- LossRaterReductionRasterCreator(LandTypes = AllTypes,
+                                                               MitigationLookUpTable = MitigationLookUpTable,
+                                                               ReferenceRaster = LeachRates[[1]]
+    )
+    #Set no data values to 0
+    LossRateReductionRaster[is.na(LossRateReductionRaster[])] <- 0
+    if (Nutrient =='N'){
+      adjustedRaster <- stack(LeachRates[[1]] * (1 - LossRateReductionRaster))
+    } else {
+      adjustedRaster[[2]] <- LeachRates[[2]] * (1 - LossRateReductionRaster)
+    }
+  }
+  
+  
+  return(adjustedRaster)
+}
+
+#' A function to reformat CASM input data into SCAMP input data
+#'
+#'[CASMToSCAMP()]  Takes the data frame 'DiffuseInputsSiteExtendedTable' generated by 
+#'SouthlandCASMPreProcess.Rmd' and creates three data.frames ready for transfer 
+#'to an excel spreadsheet in the format specified in 'SCAMP input files for Tim K.xlsx'
+#'These dataframes describe "Catchment Physical Inputs" and "Catchment WQ Inputs TN" "and Catchment WQ Inputs TP".
+#'SCAMP is a revision of CASM. The new tables divide the original into physical and nutrient properties
+#'and have a wide, rather than a long format based on land use.
+#'@param CASMData A data frame formatted ready for CASM diffuse input. Intended 
+#'to be the DiffuseInputsSiteExtendedTable data frame generated by "SouthlandCASMPreProcess.Rmd
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return Three data frames
+#'@keywords REC River Environment Classification
+#'@export
+CASMToSCAMP <- function(CASMData = DiffuseInputsSiteExtendedTable){
+  
+  #Load libraries
+  if (!require(tidyr)) install.packages('tidyr'); library(tidyr)
+  
+  #Parse the Node name to extract the land use
+  CASMData$Landuse <- sub("^.*-","",CASMData$'Node Name')
+  
+  #Create a "Catchment Name" made up of the nzsegment and the Site name
+  CASMData$'Catchment Name' <- paste(CASMData$nzsegment,CASMData$`Site Name or No.`,sep="-")
+  
+  #Create the area distribution table
+  #Go from long to wide three times using the Land use variables.
+  AreaTable <- as.data.frame(pivot_wider(CASMData,id_cols=c('Catchment Name'),names_from=Landuse,values_from='Land Area (ha)'))
+  
+  Landuses <- names(AreaTable)[-1]
+  
+  #Replace NA with 0 for the Landuse values
+  AreaTable[,Landuses][is.na(AreaTable[,Landuses])] <- 0
+  
+  #Calculate total land in each node area
+  AreaTable[,'Drainage Area (ha)'] <- rowSums(AreaTable[,Landuses],na.rm=TRUE)
+  
+  #Convert the landuse into percentages
+  AreaTable[,Landuses] <- t(
+    apply(AreaTable[,c(Landuses,'Drainage Area (ha)')], 1, function(x) {
+      x <- x[Landuses] / x['Drainage Area (ha)'] * 100
+      x
+    }))
+  
+  #Stick the Receiving Stream and receiving stream location back on. Use the first match for the receiving stream loaction
+  AreaTable$'Receiving Stream Name' <- CASMData$'Receiving Stream'[match(AreaTable$'Catchment Name', CASMData$'Catchment Name')]
+  AreaTable$'Receiving Stream Location (km)' <- CASMData$'Discharge Location (km)'[match(AreaTable$'Catchment Name', CASMData$'Catchment Name')]
+  AreaTable$'SCAMPBasin' <- CASMData$'CASMBasin'[match(AreaTable$'Catchment Name', CASMData$'Catchment Name')]
+  
+  #Re-order the columns to match the SCAMP specification
+  AreaTable <- AreaTable[,c('SCAMPBasin','Catchment Name','Receiving Stream Name','Receiving Stream Location (km)','Drainage Area (ha)',
+                            "Indigenous Forest and Conservation","Forestry","Dairy","Sheep and Beef","Horticulture","Urban and Industry","Public Use (incl lakes and rivers)","Deer","Arable")]
+  AreaTable <- AreaTable[order(AreaTable$SCAMPBasin,AreaTable$'Receiving Stream Name'),]
+  
+  #create an N Export Coefficients table
+  NTable <- as.data.frame(pivot_wider(CASMData,id_cols=c('Catchment Name'),names_from=Landuse,values_from='TN Export Coeff (kg/ha/yr)'))
+  
+  Landuses <- names(NTable)[-1]
+  
+  #Replace NA with 0 for the Landuse values
+  NTable[,Landuses][is.na(NTable[,Landuses])] <- 0
+  
+  #Stick the Receiving Stream and receiving stream location back on. Use the first match for the receiving stream loaction
+  NTable$'Receiving Stream Name' <- CASMData$'Receiving Stream'[match(NTable$'Catchment Name', CASMData$'Catchment Name')]
+  NTable$'Receiving Stream Location (km)' <- CASMData$'Discharge Location (km)'[match(NTable$'Catchment Name', CASMData$'Catchment Name')]
+  NTable$'Diffuse Path Attenuation Coefficient' <- CASMData$'TN Physiographic-based attenuation scale estimate'[match(NTable$'Catchment Name', CASMData$'Catchment Name')]
+  NTable$'SCAMPBasin' <- CASMData$'CASMBasin'[match(NTable$'Catchment Name', CASMData$'Catchment Name')]
+  
+  #Re-order the columns to match the SCAMP specification
+  NTable <- NTable[,c('SCAMPBasin','Catchment Name','Receiving Stream Name','Receiving Stream Location (km)','Diffuse Path Attenuation Coefficient',
+                      "Indigenous Forest and Conservation","Forestry","Dairy","Sheep and Beef","Horticulture","Urban and Industry","Public Use (incl lakes and rivers)","Deer","Arable")]
+  NTable <- NTable[order(NTable$SCAMPBasin,NTable$'Receiving Stream Name'),]
+  
+  #create a P Export coefficients table
+  PTable <- as.data.frame(pivot_wider(CASMData,id_cols=c('Catchment Name'),names_from=Landuse,values_from='TP Export Coeff (kg/ha/yr)'))
+  
+  Landuses <- names(PTable)[-1]
+  
+  #Replace NA with 0 for the Landuse values
+  PTable[,Landuses][is.na(PTable[,Landuses])] <- 0
+  
+  #Stick the Receiving Stream and receiving stream location back on. Use the first match for the receiving stream loaction
+  PTable$'Receiving Stream Name' <- CASMData$'Receiving Stream'[match(PTable$'Catchment Name', CASMData$'Catchment Name')]
+  PTable$'Receiving Stream Location (km)' <- CASMData$'Discharge Location (km)'[match(PTable$'Catchment Name', CASMData$'Catchment Name')]
+  PTable$'Diffuse Path Attenuation Coefficient' <- CASMData$'TP Physiographic-based attenuation scale estimate'[match(PTable$'Catchment Name', CASMData$'Catchment Name')]
+  PTable$'SCAMPBasin' <- CASMData$'CASMBasin'[match(PTable$'Catchment Name', CASMData$'Catchment Name')]
+  
+  #Re-order the columns to match the SCAMP specification
+  PTable <- PTable[,c('SCAMPBasin','Catchment Name','Receiving Stream Name','Receiving Stream Location (km)','Diffuse Path Attenuation Coefficient',
+                      "Indigenous Forest and Conservation","Forestry","Dairy","Sheep and Beef","Horticulture","Urban and Industry","Public Use (incl lakes and rivers)","Deer","Arable")]
+  PTable <- PTable[order(PTable$SCAMPBasin,PTable$'Receiving Stream Name'),]
+  
+  return(list(AreaTable = AreaTable, NTable = NTable, PTable = PTable))
+  
+}
+
+#' A function to plot the river segment distribution of 1)percent upstream exotic grassland
+#' 2) upstream catchment area and 3) Water plan class
+#' 
+#'  The distribution is for river segments of strahler order 3 and above) and uses
+#'  10 bins. The percentage of location points in each bin is also shown
+#'
+#'[AttributeDistributionPlot()] enables investigation of how representative the SCAMP 
+#'network is to a complete river network 
+#'@param RECReachNetwork The complete RECV2 network
+#'@parm CompleteDomain A spatial polygon that describes the modelling domain boundary
+#'@param MajorCatchments A spatial polygon file that describes the major catchments
+#'@param SouthlandREC2Utility A data frame of additional REC attributes including
+#' "pctExoticPasture"
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return Three data frames
+#'@keywords REC River Environment Classification
+#'@export
+AttributeDistributionPlot <- function(RECReachNetwork = NA,
+                                      CompleteDomain = NA,
+                                      MajorCatchments = NA,
+                                      SouthlandREC2Utility = NA){
+  
+  #Get all the REC reaches in strahler order 3 and above
+  RECOrder3andAbove <- RECReachNetwork[RECReachNetwork@data$StreamOrde >= 3,]
+  
+  #Limit to sites within the overall domain
+  RECOrder3andAbove <- RECOrder3andAbove[!is.na(RECOrder3andAbove %over% CompleteDomain),]
+  
+  #Add the pctExoticPasture attribute from the SouthlandREC2Utility data
+  RECOrder3andAbove@data <- join(RECOrder3andAbove@data,SouthlandREC2Utility[,c("pctExoticPasture","nzsegment")],type="left")
+  
+  #Add the catchment name as an attribute
+  RECOrder3andAbove$Catchments <- as.character(unlist(RECOrder3andAbove %over% MajorCatchments))
+  
+  #There are a few in New River Estuary and Invercargill area that are outside the Invercargill FMU boundary, but only because the boundary doesn't include the estuary
+  RECOrder3andAbove$Catchments[which(is.na(RECOrder3andAbove$Catchments))] <- "Oreti & Invercargill Catchments"
+  
+  #These are all the "Network" sites, so I'll call them that in an attribute called "What
+  RECOrder3andAbove@data$What <- "Network"
+  
+  #And just extract the dataframe for the graphing
+  GraphDataFortheCompleteNetwork <- RECOrder3andAbove@data[,c("nzsegment","CUM_AREA","WaterPlan","Catchments","pctExoticPasture","What")]
+  
+  #Add an attribute which has the total number of segments in the class
+  GraphDataFortheCompleteNetwork$TotalNo <- nrow(GraphDataFortheCompleteNetwork)
+  
+  #Add an attribute which has the total number of segments in the class in each catchment
+  TotalReachesInEachCatchment <- table(GraphDataFortheCompleteNetwork$Catchments)
+  GraphDataFortheCompleteNetwork$TotalInEachCatchment <- as.vector(TotalReachesInEachCatchment[GraphDataFortheCompleteNetwork$Catchments])
+  
+  #Just in case, remove any rows that aren't complete (I think there is one missing the pstUpstream pasture attribute
+  GraphDataFortheCompleteNetwork <- GraphDataFortheCompleteNetwork[complete.cases(GraphDataFortheCompleteNetwork),]
+  
+  #Create a subset of these that are associated with CASM locations
+  GraphDataForLocations <- GraphDataFortheCompleteNetwork[which(GraphDataFortheCompleteNetwork$nzsegment %in% AllPoints),]
+  
+  #And re-label the "What" attribute to "Locations"
+  GraphDataForLocations$What <- "Locations"
+  
+  #Update the TotalNo to match the number of locations, and the total number in each catchment
+  GraphDataForLocations$TotalNo <- nrow(GraphDataForLocations)
+  TotalLocationsInEachCatchment <- table(GraphDataForLocations$Catchments)
+  GraphDataForLocations$TotalInEachCatchment <- as.vector(TotalLocationsInEachCatchment[GraphDataForLocations$Catchments])
+  
+  #Rbind the full network and the locations
+  GraphData <- rbind(GraphDataFortheCompleteNetwork,GraphDataForLocations)
+  
+  #Convert the catchment area to km2
+  GraphData$CUM_AREA <- round(GraphData$CUM_AREA / 1000000,1)
+  
+  #Rename the attributes of interest to make the automatic graph labelling a bit more intuitive
+  GraphData <- rename(GraphData, c("Catchment Area (km2)"="CUM_AREA",
+                                   "Percentage of catchment in high producing pasture"="pctExoticPasture",
+                                   "Water Plan Classes"="WaterPlan"))
+  
+  #Initialise an empty plot list
+  PlotList <- list()
+  
+  AttributesOfInterest <- c("Catchment Area (km2)","Percentage of catchment in high producing pasture")
+  for (AttributeToBePlotted in AttributesOfInterest){
+    
+    FullDomainPlot <- ggplot(GraphData, aes(x=GraphData[,AttributeToBePlotted],y=stat(count) * 100,fill=What,weight=1/TotalNo)) + geom_histogram(bins=10,colour="grey",position="dodge") + labs(fill="", title = "All catchments",x = AttributeToBePlotted, y = "Percentage of total")
+    
+    CatchmentPlot <- ggplot(GraphData, aes(x=GraphData[,AttributeToBePlotted],y=stat(count) * 100,fill=What,weight=1/TotalInEachCatchment))+ geom_histogram(bins=10,colour="grey",position="dodge") + labs(fill="", x = AttributeToBePlotted, y = "Percentage of total") + facet_wrap(. ~Catchments,ncol=2)
+    
+    PlotList <- c(PlotList,list(FullDomainPlot),list(CatchmentPlot))
+  }
+  
+  WaterPlanFullDomainPlot <- ggplot(GraphData, aes(x=GraphData[,"Water Plan Classes"],y=stat(count) * 100,fill=What,weight=1/TotalNo)) + geom_bar(colour="grey",position="dodge") + labs(fill="",title = "All catchments", x = "Water Plan Classes", y = "Percentage of total") 
+  
+  WaterPlanByCatchmentPlot <- ggplot(GraphData, aes(x=GraphData[,"Water Plan Classes"],y=stat(count) * 100,fill=What,weight=1/TotalInEachCatchment))+ geom_bar(colour="grey",position="dodge") + labs(fill="", x = "Water Plan Classes", y = "Percentage of total") + theme(axis.text.x = element_text(angle = 45, hjust=1))+ facet_wrap(. ~Catchments,ncol=2)
+  
+  PlotList <- c(PlotList,list(WaterPlanFullDomainPlot),list(WaterPlanByCatchmentPlot))
+  
+  library(gridExtra)
+  
+  # Three pages of plots in one PDF file
+  {
+    pdf("CASM Node location representativeness.pdf", 8.27, 11.69)
+    for (i in seq(1, length(PlotList), 2)) {
+      grid.arrange(PlotList[[i]],
+                   PlotList[[i+1]],
+                   nrow=3,
+                   layout_matrix = rbind(1,2,2,2))
+      
+    }
+    dev.off()
+  }
+}
