@@ -44,7 +44,7 @@ Scenario <- "OurLandWater2015Potential"
 
 
 Set directories and data file names
-```{r, eval = FALSE}
+```{r}
 ProjectDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling"       #Tim Kerr's Windows Home laptop
 DataDirectory     <- file.path(ProjectDirectory, "Data")
 GISDataDirectory  <- file.path(DataDirectory,"GIS")
@@ -776,7 +776,7 @@ levels(DiffuseSourceLanduse) <- rat
 #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
 #crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
 
-
+#OldLeachRateRaster <- LeachRateRaster
 if (Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential")){
   MitigationScenario = paste0("Potential",gsub("^[a-z,A-Z]*([0-9]+).*$","\\1",Scenario))
   #Adjust the LeachRateRasters for the Our Land and Water Mitigation scenarios
@@ -784,7 +784,8 @@ LeachRateRaster <- LeachRateAdjuster(LeachRates = LeachRateRaster,
                   MitigationDataFile = OLWMitigationDataFile,
                   MitigationOfInterest = MitigationScenario,
                   DairyLandTypeSpatialDataFile = OLWDairyLandTypesSpatialFile,
-                  SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile)
+                  SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile,
+                  MissingTypesUseReClass = FALSE)
 }
   
   #Get the total nitrogen leach rates for each unique combination of source area and land use
@@ -866,7 +867,7 @@ Chlopleth mapping is from here https://rstudio.github.io/leaflet/choropleths.htm
 Raster mapping is from here https://stackoverflow.com/questions/59110756/failed-to-add-a-categorical-legend-in-leaflet-in-r-using-addlegendlabels
 
 Speed improvements were undertaken following https://stackoverflow.com/questions/44356224/leaflet-shiny-integration-slow
-```{r}
+```{r, eval = FALSE}
 
 
 #RECForMaps <- RECReachNetwork[(sqrt(RECReachNetwork@data$CUM_AREA)/10000 > 1) | (RECReachNetwork@data$nzsegment %in% CompleteNetwork),]
@@ -1163,6 +1164,6 @@ saveWorkbook(Out, OutputFileName, overwrite = T)
 
 If you want to check how different the output spreadsheet is to previous spreadsheets then use the 
 ```{r}
-bob <- LoadComparer(c(file.path(DataDirectory,"SCAMP-InputsV3Test.xlsx"),file.path(DataDirectory,"SCAMP-InputsV3c_OurLandWater2015Potential.xlsx")))
+bob <- LoadComparer(c(file.path(DataDirectory,"SCAMP-InputsV3b.xlsx"),OutputFileName))
 sum(bob$AbsDiff)
 ```
