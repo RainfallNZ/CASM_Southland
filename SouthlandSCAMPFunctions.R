@@ -714,47 +714,21 @@ CreatePhysiographyAttenuationEstimates <- function(PhysiographicFile = Physiogra
 #''type' (row). The intention was to use data generated from the tables provided in the 
 #'McDowell et al (2020) supplementary material, but any Type-to-fraction-reduction 
 #'data frame will work as long as the 'types' match the types in McDowell et al. (2020).
-#'@param TypologyReclassFile A csv file which lists typologies in the spatial data
-#'that are not in the mitigation data, and provides an equivalent mitigation type.
-#'Only needed if MissingTypesUseReClass = TRUE (the default).
+#'Ross Monaghan provided expert guidance on loss rates for types not included in McDowell et al. (2020)
 #'@param ReferenceRaster A reference raster to align to. Ideally use the loss-rate-raster
-#'@param MissingTypesUseReClass Whether to use the reclass table on the spatial types (default).
-#'There are more types in the spatial data than in the Mitigation table. The TypologyReclassFile
-#'can be used to "correct" the missing types. Alternativel (if MissingTypesUseReClass = FALSE )
-#'the missing types can be set to the average of the existing Dairy types. If MissingTypesUseReClass = FALSE
-#'then TypologyReclassFile is not needed.
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster object of 
 #'@keywords Water Quality, CASM, SCAMP, leach
 #'@export
 LossRaterReductionRasterCreator <- function(LandTypes=LanduseShapeFile,
                                             MitigationLookUpTable=NA,
-                                            TypologyReclassFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterDairyTypeReclass.csv",
-                                            ReferenceRaster = LossRateRaster,
-                                            MissingTypesUseReClass = TRUE){
+                                            ReferenceRaster = LossRateRaster){
   
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
   #browser()
-  #Two methods to handle the spatial types that are missing from the MitigationLookupTable
-  if (MissingTypesUseReClass){
-    #Load the Type reclass table
-    TypeReclassTable <- read.csv(TypologyReclassFile)
 
-    #Find the reclassed versions of the spatial data typologies. Types that don't need to be reclasses become NA
-    UpdatedTypologies <- TypeReclassTable$MitigationTypology[match(LandTypes$Typology,TypeReclassTable$SpatialTypology)]
-    LandTypes$Typology[!is.na(UpdatedTypologies)] <- UpdatedTypologies[!is.na(UpdatedTypologies)]
-  } else { 
-
-    #reclass all the missing types to "DairyAverage". This follows  pers. comms. with Ross Monaghan (and Tim Kerr).
-    MissingTypesIndices <- which(!LandTypes$Typology %in% MitigationLookUpTable$Typology)
-    LandTypes$Typology[MissingTypesIndices] <- "DairyAverage"
-    #add a "DairyAverage" class to the MitigationLookupTable
-    DairyAverages <- mean(MitigationLookUpTable[grepl("Cool|Warm",MitigationLookUpTable$Typology),2])
-    MitigationLookUpTable <- rbind(MitigationLookUpTable,data.frame("Typology" = "DairyAverage","ScenarioMitigationFraction"=DairyAverages))
-  }
-    
   #Join the look up table to the spatial data
   LandTypes$LossRateReduction <- MitigationLookUpTable[match(LandTypes$Typology,MitigationLookUpTable$Typology),2]
   
@@ -779,11 +753,10 @@ LossRaterReductionRasterCreator <- function(LandTypes=LanduseShapeFile,
 #'@keywords Water Quality, CASM, SCAMP, leach
 #'@export
 LeachRateAdjuster <- function(LeachRates=LeachRateRaster,
-                              MitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoads.csv",
+                              MitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoadsV2.csv",
                               MitigationOfInterest = "Potential2015",
                               DairyLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesDairy\\OLW_Southland_TypologiesDairy.shp",
-                              SheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp",
-                              MissingTypesUseReClass = TRUE){
+                              SheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp"){
   
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
@@ -816,9 +789,7 @@ LeachRateAdjuster <- function(LeachRates=LeachRateRaster,
     #create the loss rate reduction raster
     LossRateReductionRaster <- LossRaterReductionRasterCreator(LandTypes = AllTypes,
                                                                MitigationLookUpTable = MitigationLookUpTable,
-                                                               ReferenceRaster = LeachRates[[1]],
-                                                               MissingTypesUseReClass = MissingTypesUseReClass
-    )
+                                                               ReferenceRaster = LeachRates[[1]])
     #Set no data values to 0
     LossRateReductionRaster[is.na(LossRateReductionRaster[])] <- 0
     if (Nutrient =='N'){

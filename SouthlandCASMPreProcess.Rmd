@@ -37,8 +37,8 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-#Scenario <- "Default"
-Scenario <- "OurLandWater2015Potential"
+Scenario <- "Default"
+#Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
 ```
 
@@ -50,7 +50,7 @@ DataDirectory     <- file.path(ProjectDirectory, "Data")
 GISDataDirectory  <- file.path(DataDirectory,"GIS")
 
 #Set the output filename. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV3Test"
+OutputBaseFileName <- "SCAMP-InputsV3bTest"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -124,7 +124,7 @@ PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Att
 WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
 
 if (Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential")){
-  OLWMitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoads.csv"
+  OLWMitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoadsV2.csv"
   OLWDairyLandTypesSpatialFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesDairy\\OLW_Southland_TypologiesDairy.shp"
   OLWSheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp"
 }
@@ -784,8 +784,7 @@ LeachRateRaster <- LeachRateAdjuster(LeachRates = LeachRateRaster,
                   MitigationDataFile = OLWMitigationDataFile,
                   MitigationOfInterest = MitigationScenario,
                   DairyLandTypeSpatialDataFile = OLWDairyLandTypesSpatialFile,
-                  SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile,
-                  MissingTypesUseReClass = FALSE)
+                  SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile)
 }
   
   #Get the total nitrogen leach rates for each unique combination of source area and land use
