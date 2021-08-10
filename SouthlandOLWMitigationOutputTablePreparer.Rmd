@@ -1,0 +1,172 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Load libraries
+
+```{r}
+if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
+```
+
+Set file names and directories
+```{r}
+DataDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data"
+
+
+
+#Set the file name for the RECV2 data that has the reporting catchments in it
+RECV2WithReportingCatchmentFileName <- file.path(DataDirectory,"TerminalReachesWithReportingCatchments.csv")
+
+#Set the file name for the look up table that shows which RECV2 segments were combined for the purposes of SCAMP simplification
+RECV2ToCASMOverideFileName <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV2.csv")
+
+#Set the file name for the look up table that shows which RECV2 terminal segments match to SCAMP terminal segments (when they're not the same)
+RECV2ToSCAMPTerminalReachMismatchFileName <- file.path(DataDirectory,"SCAMPTerminalReachToRECV2TerminalReach.csv")
+
+
+#Set the file name for the SCAMP input data. Only need one file, as just need the sheet that relates SCAMP nodes to RECV2 reach numbers.
+SCAMPInputDataFileName <- file.path(DataDirectory,"SCAMP-InputsV3b_OurLandWater2015PotentialV2.xlsx")
+
+#Set the directory for where the SCAMP output data are
+OLWMitigationDirectory <- "D:\\Projects\\LWP\\SouthlandSCAMP\\SCAMP\\OLW Mitigations"
+
+OutputSummaryFileName <- file.path(OLWMitigationDirectory,"ReportingCatchmentSummariesV2.csv")
+
+AssessmentPointSummaryFileName <- file.path(OLWMitigationDirectory,"AssessmentPointSummariesV2.csv")
+```
+
+Load data
+
+```{r}
+RECV2WithReportingCatchmentData <- read.table(RECV2WithReportingCatchmentFileName,sep=",",header = TRUE)
+RECV2ToCASMOverideData <- read.table(RECV2ToCASMOverideFileName,sep=",",header=TRUE)
+RECV2ToSCAMPTerminalReachMismatchData <- read.table(RECV2ToSCAMPTerminalReachMismatchFileName,sep=",",header=TRUE)
+SCAMPNodeReachData <- read.xlsx(SCAMPInputDataFileName, sheet = "Assessment Points")
+```
+
+Do stuff
+```{r}
+
+#Get all the SCAMP output data
+OutData <- lapply(list.files(OLWMitigationDirectory,pattern = "^output summaries .*.xlsx$",full.names=TRUE), function(SCAMPOutputFile) {
+  for (nutrient in c("TN","TP")){
+    for (scenario in c("Base","2015","2035")){
+      SheetName = paste("Node Summary Table",nutrient,scenario)
+      #browser()
+      NewData <- read.xlsx(SCAMPOutputFile, sheet = SheetName,startRow = 4,cols = c(1:6,12))
+      names(NewData)[6] <- paste0(nutrient,"_",scenario)
+      NewData$nzsegment <- gsub('^([0-9]{8})-.*','\\1',NewData$'Node.Name')
+      RiverSegmentNode <- grep('^([0-9]{8})-.*',NewData$'Node.Name', value = FALSE)
+      NewData$nzsegment[-RiverSegmentNode] <- NA
+      NewData$nzsegment <- as.numeric(NewData$nzsegment)
+      if (nutrient == "TN" & scenario == "Base") OldData <- NewData else OldData <- merge(NewData,OldData)
+    }
+  }
+  return(OldData)
+})
+SCAMPData <- do.call(rbind,OutData)
+
+
+ReportingCatchments <- c("Aparima & Pourakino Catchment","Bluff Zone", "Catlins Zone",
+                         "Mataura Catchments","Orepuki Coastal Zone","Oreti & Invercargill Catchments",
+                         "Te Waewae Bay Western Coastal Zone","Tokanui Coastal Zone",
+                         "Waiau Catchment","Waikawa Catchment","Waimatuku & Taunamau Catchments",
+                         "Waituna Catchments")
+OutputDataFrame <- data.frame(ReportingCatchment = ReportingCatchments,
+                              SCAMPAreaPct = NA,
+                              TNPCtMitigation2015 = NA,
+                              TNPCtMitigation2035 = NA,
+                              TPPCtMitigation2015 = NA,
+                              TPPCtMitigation2035 = NA,
+                              TP_Base = NA,
+                              TP_2015 = NA,
+                              TP_2035 = NA,
+                              TN_Base = NA,
+                              TN_2015 = NA,
+                              TN_2035 = NA,
+                              TotalArea = NA,
+                              SCAMPArea = NA
+)
+
+for (ReportingCatchment in ReportingCatchments) { #for testing ReportingCatchment <- "Aparima & Pourakino Catchment"
+  
+  
+  #Find all the terminal reaches in the reporting catchment
+  TerminalReacheIndices <- which((RECV2WithReportingCatchmentData$FactSheetZ == ReportingCatchment) & (RECV2WithReportingCatchmentData$NextDownID == 0))
+  ThisCatchmentsTerminalReaches <- RECV2WithReportingCatchmentData[TerminalReacheIndices,]
+  
+  #Find the Terminal reaches NOT in the SCAMP data
+  TerminalReachesMissingFromSCAMP <- which(!ThisCatchmentsTerminalReaches$nzsegment %in% c(RECV2ToSCAMPTerminalReachMismatchData$nzsegment,SCAMPData$nzsegment,RECV2ToCASMOverideData$nzsegment))
+  TerminalReachesInSCAMP <- which(ThisCatchmentsTerminalReaches$nzsegment %in% c(RECV2ToSCAMPTerminalReachMismatchData$nzsegment,SCAMPData$nzsegment,RECV2ToCASMOverideData$nzsegment))
+  MissingTerminalReaches <- ThisCatchmentsTerminalReaches[TerminalReachesMissingFromSCAMP,]
+  SCAMPTerminalReaches <- ThisCatchmentsTerminalReaches[TerminalReachesInSCAMP,]
+  
+  #Get the total upstream area of all the terminal reaches in the reporting catchment
+  TotalUpStreamArea <- sum(ThisCatchmentsTerminalReaches$CUM_AREA)
+  
+  #Get the total upstream area of the terminal reaches covered by scamp
+  TotalUpStreamSCAMPArea <- sum(SCAMPTerminalReaches$CUM_AREA)
+  
+  #Get the ratio of SCAMP up-stream area to total up-stream area
+  OutputDataFrame$SCAMPAreaPct[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- round(TotalUpStreamSCAMPArea / TotalUpStreamArea * 100,0)
+  
+  OutputDataFrame$TotalArea[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- round(TotalUpStreamArea,0)
+  
+  OutputDataFrame$SCAMPArea[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- round(TotalUpStreamSCAMPArea,0)
+  
+  #Get the SCAMP data for the terminal reaches in this reporting catchment
+  #Need to correct the terminal reaches using the Over-ride and TerminalReach mismatch data
+  RealSCAMPTermianalReaches <- SCAMPTerminalReaches$nzsegment
+  
+  RealSCAMPTermianalReaches[RealSCAMPTermianalReaches %in% RECV2ToCASMOverideData$nzsegment] <-
+    RECV2ToCASMOverideData$CASMnzsegment[match(RealSCAMPTermianalReaches[RealSCAMPTermianalReaches %in% RECV2ToCASMOverideData$nzsegment],RECV2ToCASMOverideData$nzsegment)]
+  
+  RealSCAMPTermianalReaches[RealSCAMPTermianalReaches %in% RECV2ToSCAMPTerminalReachMismatchData$nzsegment] <-
+    RECV2ToSCAMPTerminalReachMismatchData$SCAMPnzsegment[match(RealSCAMPTermianalReaches[RealSCAMPTermianalReaches %in% RECV2ToSCAMPTerminalReachMismatchData$nzsegment],RECV2ToSCAMPTerminalReachMismatchData$nzsegment)]
+  
+  #Manual hack to fix the mismatch between of an REC terminal reach in the Tokanui Reporting Catchment flowing to the Toenui Estuary (in the Mataura Reporting Catchment)
+  if (ReportingCatchment == "Tokanui Coastal Zone") RealSCAMPTermianalReaches <- RealSCAMPTermianalReaches[RealSCAMPTermianalReaches != 15319805]
+  
+  SCAMPDataForThisCatchment <- SCAMPData[which(SCAMPData$nzsegment %in% RealSCAMPTermianalReaches),]
+  
+  #Get the total SCAMP instream load for each of the nutrients and scenarios
+  CatchmentTotals <-  colSums(SCAMPDataForThisCatchment[,c("TP_Base","TP_2015","TP_2035","TN_Base","TN_2015","TN_2035")])
+  
+  OutputDataFrame[OutputDataFrame$ReportingCatchment == ReportingCatchment,c(7:12)] <- CatchmentTotals
+  
+  #Get the percentage change in instream load for each of the nutrients and mitigation scenarios
+  OutputDataFrame$TPPCtMitigation2015[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- 
+    round((CatchmentTotals[2] - CatchmentTotals[1]) / CatchmentTotals[1] * 100,1)
+  
+  
+  
+  OutputDataFrame$TPPCtMitigation2035[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- 
+    round((CatchmentTotals[3] - CatchmentTotals[1]) / CatchmentTotals[1] * 100,1)
+  OutputDataFrame$TNPCtMitigation2015[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- 
+    round((CatchmentTotals[5] - CatchmentTotals[4]) / CatchmentTotals[4] * 100,0)
+  OutputDataFrame$TNPCtMitigation2035[OutputDataFrame$ReportingCatchment == ReportingCatchment] <- 
+    round((CatchmentTotals[6] - CatchmentTotals[4]) / CatchmentTotals[4] * 100,0)
+  
+  
+  
+  #Get the percentage area of each land use in each reporting catchment
+  #Get the percentage area of each land use for the area covered by SCAMP
+  #Compare the land use areas
+}
+write.csv(OutputDataFrame,OutputSummaryFileName,row.names = FALSE,quote=FALSE)
+```
+
+Ned has requested a table of percentage reductions for each of the assessment points.
+This can be extracted from "SCAMPData".
+It is helpful to expand it to include all the many-to-one catchments 
+
+```{r}
+SCAMPData$TP2015Pct <- round((SCAMPData$TP_Base - SCAMPData$TP_2015) / SCAMPData$TP_Base * 100,1)
+SCAMPData$TP2035Pct <- round((SCAMPData$TP_Base - SCAMPData$TP_2035) / SCAMPData$TP_Base * 100,1) 
+SCAMPData$TN2015Pct <- round((SCAMPData$TN_Base - SCAMPData$TN_2015) / SCAMPData$TN_Base * 100,1) 
+SCAMPData$TN2035Pct <- round((SCAMPData$TN_Base - SCAMPData$TN_2035) / SCAMPData$TN_Base * 100,1)
+write.csv(SCAMPData[complete.cases(SCAMPData),],AssessmentPointSummaryFileName,row.names = FALSE,quote=FALSE)
+```
+
+
