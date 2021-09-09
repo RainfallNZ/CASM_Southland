@@ -37,9 +37,25 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-Scenario <- "Default"
+#Scenario <- "Default"
 #Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
+Scenario <- "Wetland1"
+# Scenario <- "Wetland2"
+# Scenario <- "Wetland3"
+# Scenario <- "Wastewater"
+# Scenario <- "Retirement1"
+# Scenario <- "Retirement2"
+# Scenario <- "Restoration"
+# 
+# Scenario <- c("Wetland1","Wastewater","Restoration")
+# Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration")
+# Scenario <- c("Wetland2","Wastewater","Restoration")
+# Scenario <- c("OurLandWater2035Potential","Wetland2","Wastewater","Restoration")
+# Scenario <- c("Wetland3","Wastewater","Restoration")
+# Scenario <- c("OurLandWater2035Potential","Wetland3","Wastewater","Restoration")
+# Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration","Retirement1")
+# Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration","Retirement2")
 ```
 
 
@@ -48,13 +64,14 @@ Set directories and data file names
 ProjectDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling"       #Tim Kerr's Windows Home laptop
 DataDirectory     <- file.path(ProjectDirectory, "Data")
 GISDataDirectory  <- file.path(DataDirectory,"GIS")
+ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
-#Set the output filename. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
+#Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
 OutputBaseFileName <- "SCAMP-InputsV3bTest"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
-  OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,"_",Scenario,".xlsx"))
+  OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,"_",paste(Scenario,collapse=""),".xlsx"))
 }
 
 #Set some R data file names from the LWP data store
@@ -83,7 +100,7 @@ PhysiographicDataFile   <- file.path(GISDataDirectory,"Environment_Southland_Phy
 WaterPlanClassificationFile <- "WaterPlanClassification" #A Shape file
 DiffuseLoadSourceAreasFile <- file.path(GISDataDirectory,"CASMDiffuseLoadSourceAreas","CASMDiffuseLoadSourceAreas.shp")
 
-LanduseShapeFile        <- file.path(GISDataDirectory,"LanduseLayers/LandUse2017/LandUse2017.shp")
+LanduseShapeFile        <- file.path(GISDataDirectory,"LanduseLayers/LandUse2017/LandUse2017Clean.shp")
 SoilDrainageShapeFile   <- file.path(GISDataDirectory,"LanduseLayers/Soil_drainage/Soil_drainage.shp")
 SlopeClassShapeFile     <- file.path(GISDataDirectory,"LanduseLayers/LRI_Slope_Layer/LRI_Slope_Layer.shp")
 PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/PrecipitationClass_withIrri/Complete_Southland_Precip_Layer.shp")
@@ -123,7 +140,7 @@ PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Att
 #Water quality load data updated for location shifts
 WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
 
-if (Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential")){
+if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential"))){
   OLWMitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoadsV2.csv"
   OLWDairyLandTypesSpatialFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesDairy\\OLW_Southland_TypologiesDairy.shp"
   OLWSheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp"
@@ -336,26 +353,40 @@ GroundwaterZones <- readOGR(dsn =file.path(GISDataDirectory,GroundwaterZonesFile
                            layer = GroundwaterZonesFile, stringsAsFactors = FALSE)
 GroundwaterZones <- spTransform(GroundwaterZones,CRS("+init=epsg:2193") )
 
-#Load the leachrate data if it exists
-LeachRateRaster <- stack(LeachRateRasterFile)
-crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
 
-#**********************************************************
-#If the leach rate raster file is missing or needs to be re-created then use the following:
-#Takes 4 minutes at 250 m
-# source(file.path(ProjectDirectory,"R/CASM_Southland/LeachRateRasterCreator.R"))
-# tic()
-# LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
-#                                    SoilDrainageData=SoilDrainageShapeFile,
-#                                    SlopeClassData=SlopeClassShapeFile,
-#                                    PrecipIrrig=PrecipIrrigShapeFile,
-#                                    LeachRateData = LeachRateLUTFile,
-#                                    Resolution = 250)
-# toc()
-# #And save it for nexttime
-# writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
-# writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
+#Load the leachrate data.
+#FOr the default Scenario, use the saved LeachRateRasterFile if it exists
 
+if (Scenario == "Default") {
+  LeachRateRaster <- stack(LeachRateRasterFile)
+  crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
+  
+  LandUseRaster <- stack(PredictorRasterFile)[[1]]
+  #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
+  crs(LandUseRaster) <- sf::st_crs(2193)$wkt
+} else {
+  
+  #The LeachRateRaster and the LandUseRaster needs to change for the different scenarios.
+  #**********************************************************
+  # This can also be used if the leach rate raster file is missing or needs to be re-created
+  #Takes 4 minutes at 250 m
+  tic()
+  LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
+                                            SoilDrainageData=SoilDrainageShapeFile,
+                                            SlopeClassData=SlopeClassShapeFile,
+                                            PrecipIrrig=PrecipIrrigShapeFile,
+                                            LeachRateData = LeachRateLUTFile,
+                                            Resolution = 250,
+                                            ScenarioLandUseGISFolder = ScenarioLandUseGISDirectory,
+                                            Scenarios = Scenario)
+  toc()
+  # #And save it for nexttime if this is to replace the default
+  # writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
+  # writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
+  
+  LandUseRaster <- LeachRateRaster[[3]]
+  LeachRateRaster <- LeachRateRaster[[1:2]]
+}
 #******************************************************************
 
 #Load the Physiography-based attenuation estimates
@@ -443,7 +474,7 @@ SubCatchmentConfluencePointsSpatial$RiverName <- NA
 SubCatchmentConfluencePointsSpatial <- SubCatchmentConfluencePointsSpatial[!is.na(SubCatchmentConfluencePointsSpatial %over% CompleteDomain),]
 
 #Save a copy for viewing in QGIS if required
-#writeOGR(SubCatchmentConfluencePointsSpatial, file.path(GISDataDirectory,"SubCatchmentJunctionSites"),layer="SubcatchmentJunctionSites",driver="ESRI Shapefile",overwrite_layer=TRUE)
+#writeOGR(SubCatchmentConfluencePointsSpatial, file.path(GISDataDirectory,"SubCatchmentJunctionSites"),layer="SubcatchmentJunctionSitesV3",driver="ESRI Shapefile",overwrite_layer=TRUE)
 ```
 
 
@@ -552,7 +583,7 @@ CompleteSpatialNetwork@data$CASMBasin <- CASMBasinLookupTable$CASM_Basin[match(C
 #CompleteSpatialNetwork@data$PrefixedLabel <- SegmentToPrefixedLabelLookUpTable$Prefixedlabel[match(CompleteSpatialNetwork@data$nzsegment,SegmentToPrefixedLabelLookUpTable$nzsgmnt)]
 
 #Save the network as a spatial file
-#writeOGR(CompleteSpatialNetwork, dsn=GISDataDirectory,layer="CASM-StreamNetwork-namedV2", driver="ESRI Shapefile",overwrite_layer=TRUE)
+#writeOGR(CompleteSpatialNetwork, dsn=GISDataDirectory,layer="CASM-StreamNetwork-namedV3", driver="ESRI Shapefile",overwrite_layer=TRUE)
 
 TributaryConnectionTable <- TributaryConnectionCreator(RECNetwork = CompleteSpatialNetwork, TributaryLabelList = NetworkLabelList)
 
@@ -739,23 +770,25 @@ if(file.exists(DiffuseLoadSourceAreasFile)) {
 if (!DiffuseSourceAreasOK) {
   invisible(readline(prompt="Press [enter] to agree to generation of the Diffuse load source areas. This takes 15 minutes!"))
   if(!exists("RECWatersheds")) {
-    RECWatersheds <- readOGR(dsn = dirname(REC_Catchments),
-                             layer = basename(REC_Catchments))
-    RECWatersheds <- spTransform(RECWatersheds,CRS("+init=epsg:2193") )
+      RECWatersheds <- st_read(RECWatersheds)
+      RECWatersheds <- st_transform(RECRivers_SF, 2193)
   }
+
   DiffuseLoadSourceAreas <- CASMNodeSourceAreaGenerator(RECWatersheds = RECWatersheds,RECNetwork = RECReachNetwork@data, CASMNodes = Diffusenzsegments)
   #Save a copy for later
   st_write(DiffuseLoadSourceAreas,DiffuseLoadSourceAreasFile, append=FALSE)
 }
 
 #Create an intersection of the Diffuse source area and landuse data by using raster maths.
-#Load the landuse raster data
-LandUseRaster <- stack(PredictorRasterFile)[[1]]
-#Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
-crs(LandUseRaster) <- sf::st_crs(2193)$wkt
+#Load the landuse raster data has already been loaded
 
 #While we're here create a lookup table to the landuse classes
 LanduseLUT <- levels(LandUseRaster)[[1]]
+#When the Landuse raster is created from the PredictorRasterFile, the Raster Attribute Table has an "ID" and a "category".
+#When it is saved directly during its creation (usually when updating scenarios), the Raster Attribute Table has an "ID" and a "LanduseClass". This is because the *.tiff format doesn't retain raster attribute table names.
+#for compatability between the two possible sources, make sure the land use name column is called "category".
+names(LanduseLUT)[2] <- "category"
+
 
 #rasterize the diffuse source area spatial data, aligning to the Landuse data
 DiffuseSourceRaster <- rasterize(DiffuseLoadSourceAreas, LandUseRaster, "nzsegment")
@@ -777,14 +810,14 @@ levels(DiffuseSourceLanduse) <- rat
 #crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
 
 #OldLeachRateRaster <- LeachRateRaster
-if (Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential")){
+if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential"))){
   MitigationScenario = paste0("Potential",gsub("^[a-z,A-Z]*([0-9]+).*$","\\1",Scenario))
   #Adjust the LeachRateRasters for the Our Land and Water Mitigation scenarios
-LeachRateRaster <- LeachRateAdjuster(LeachRates = LeachRateRaster,
-                  MitigationDataFile = OLWMitigationDataFile,
-                  MitigationOfInterest = MitigationScenario,
-                  DairyLandTypeSpatialDataFile = OLWDairyLandTypesSpatialFile,
-                  SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile)
+  LeachRateRaster <- LeachRateAdjuster(LeachRates = LeachRateRaster,
+                                       MitigationDataFile = OLWMitigationDataFile,
+                                       MitigationOfInterest = MitigationScenario,
+                                       DairyLandTypeSpatialDataFile = OLWDairyLandTypesSpatialFile,
+                                       SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile)
 }
   
   #Get the total nitrogen leach rates for each unique combination of source area and land use
@@ -862,7 +895,7 @@ SCAMPFormattedDiffuseOutput <- CASMToSCAMP(DiffuseInputsSiteExtendedTable)
 
 An overview plot is required showing the various points and the underlying relevant spatial data.
 This plot is pre-modelling to share with the project  participants so that they can check that the points are in the right place.
-Chlopleth mapping is from here https://rstudio.github.io/leaflet/choropleths.html
+Chloropleth mapping is from here https://rstudio.github.io/leaflet/choropleths.html
 Raster mapping is from here https://stackoverflow.com/questions/59110756/failed-to-add-a-categorical-legend-in-leaflet-in-r-using-addlegendlabels
 
 Speed improvements were undertaken following https://stackoverflow.com/questions/44356224/leaflet-shiny-integration-slow

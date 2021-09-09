@@ -7,16 +7,19 @@
 #' This function is intended for use to check how the loads, described by the "Diffuse Inputs"
 #' sheet in each CASM input spreadsheet, differ. 
 #' @param CASMFiles A vector of file names of the CASM input files to be compared
+#' @param Nutrient String depicting which nutrient to sumarise. Default is 'TN'. Only other option is 'TP'
 #' @return A dataframe with absolute difference and percent difference of management sub-zone loads.
 #' @examples
 #' LoadComparer(CASMFiles = c(file.path(DataDirectory,"CASM-Inputs_SEL_Scenario_3b_IntensiveTable14_2Year20OrConsentedWithCoxCalibrated.xlsx"),SecondCASMFIle = file.path(DataDirectory,"Test.xlsx")))
-LoadComparer <- function(CASMFiles = c("CASMInputData1.xlsx","CASMInputData2.xlsx")){
+LoadComparer <- function(CASMFiles = c("CASMInputData1.xlsx","CASMInputData2.xlsx"),Nutrient='TN'){
 
   #Read the "Diffuse Inputs" tab from each input spreadsheet
   ZoneLoadList <- lapply(CASMFiles, function(CASMFile){
     DiffuseData <- read.xlsx(CASMFile,sheet = "Diffuse Inputs")
     DiffuseData$Zone_Code <- sub("-.*$","",DiffuseData$Node.Name)
-    DiffuseData$load <- DiffuseData$`Land.Area.(ha)` * DiffuseData$`TN.Export.Coeff.(kg/ha/yr)`
+    NutrientColumnName <- paste0(Nutrient,'.Export.Coeff.(kg/ha/yr)')
+    #DiffuseData$load <- DiffuseData$`Land.Area.(ha)` * DiffuseData$`TN.Export.Coeff.(kg/ha/yr)`
+    DiffuseData$load <- DiffuseData$`Land.Area.(ha)` * DiffuseData[[NutrientColumnName]]
     ZoneLoads <- ddply(DiffuseData, "Zone_Code", function(x) sum(x$load, na.rm=TRUE))
     return(ZoneLoads)
   })
@@ -505,9 +508,9 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
 #'
 #'This function generates a spatial file of catchment areas uniquely associated with each reach in a vector
 #'
-#'@param RECWatersheds An REC V2 watershed spatial object that wholly encompases the area of interest
-#'@param RECNetwork The REC V2 network data that wholly encompases the area of interest and includes at least the nzsegment, TO_NODE and FROM_NODE attributes
-#'@param CASMNodes A dataframe of node names and REC V2 reach number (i.e. nzsegment attribute) of the nodes for which the CASM table is to be prepared
+#'@param RECWatersheds An REC V2 watershed sf spatial object that wholly encompasses the area of interest
+#'@param RECNetwork The REC V2 network data that wholly encompasses the area of interest and includes at least the nzsegment, TO_NODE and FROM_NODE attributes
+#'@param CASMNodes A vector of REC V2 reach number (i.e. nzsegment attribute) of the nodes for which the CASM table is to be prepared
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A Simple Feature spatial object of polygons with associated nzsegment attribute from its related CASMNode
 #'@keywords REC River Environment Classification CASM
@@ -516,7 +519,7 @@ CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork
   
   if (!require(tidyr)) install.packages('tidyr'); library(tidyr)  #needed for the drop_na() function
   #Get the individual watershed for each CASM Node
-  NodeWatersheds <- st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),])
+  NodeWatersheds <- RECWatersheds[which(RECWatersheds$nzsegment %in% CASMNodes),]
   #Get the entire catchment for each node
   CompleteCatchments <- lapply(CASMNodes, function(CASMNode){
     
@@ -526,7 +529,7 @@ CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork
       CatchmentReaches <- c(CatchmentReaches,Upstreamreaches)
       Upstreamreaches <- RECNetwork$nzsegment[which(RECNetwork$TO_NODE %in% RECNetwork$FROM_NODE[RECNetwork$nzsegment %in% Upstreamreaches])]
     }
-    NodeCatchment <- st_union(st_as_sf(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),]))
+    NodeCatchment <- st_union(RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),])
     return(NodeCatchment)
   })
   
@@ -542,30 +545,148 @@ CASMNodeSourceAreaGenerator <- function(RECWatersheds=RECWatersheds2, RECNetwork
 }
 
 
-#' A function to combine spatial data sources of land use, and diffuse source areas.
+#' A function to combine spatial data sources of land use, soil drainage, slope and precipitation/irrigation, and uses them to look up leach rates based on an Environment Southland designation.
 #'
-#'This function generates a raster object of Diffuse source areas subclassified by landuse
+#'This function generates a raster object of leach rates
 #'
-#'@param LanduseData A raster of landuse data
-#'@param DiffuseSourceAreas A spatial object of the areas to be intersected with the land use
+#'@param LanduseData A spatial data file (in ESRI polygon shapefile format) of the land use, as provided by Environment Southland.
+#'@param SoilDrainageData A spatial data file (in ESRI polygon shapefile format) of the soil drainage class, as provided by Environment Southland.
+#'@param SlopeClassData A spatial data file (in ESRI polygon shapefile format) of the slope classification, as provided by Environment Southland.
+#'@param PrecipIrrig A spatial data file (in ESRI polygon shapefile format) of the precipiation/irrigation classification, as provided by Environment Southland.
+#'@param LeachRateData An Excel (.xlsx) file with 4 columns providing: "Land Use";"Landscape Category";"Soil drainage";"Slope Class";"Precipitation". Then a further 2 columns: "N loss (mean)"; "P loss (mean)"
+#'@param Resolution The horizontal resolution in metres. Default is 250 m
+#'@param ScenarioLandUseGISFolder The path to 
+#'@param Scenarios A vector of scenario names, some of which are associated with spatial data
+#'the order matters, as one scenario may affect land use of a previous scenario.
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster object of leach rates
 #'@keywords Water Quality, CASM, leach
 #'@export
-LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
-                                   DiffuseSourceAreas=DiffuseSourceAreaSpatialObject){
+LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
+                                   Domain = CompleteDomain,
+                                   SoilDrainageData=SoilDrainageShapeFile,
+                                   SlopeClassData=SlopeClassShapeFile,
+                                   PrecipIrrig=PrecipIrrigShapeFile,
+                                   LeachRateData = LeachRateLUTFile,
+                                   Resolution = 250,
+                                   ScenarioLandUseGISFolder = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse",
+                                   Scenarios = c()){
   
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
+  if (!require(openxlsx)) install.packages("openxlsx"); library(openxlsx)                #used for reading Excel data
   
+  #Load look up table of leaching rates based on land use, soil drainage, slope, and precipiation/irrigation
+  LeachRateLookUpTable<- read.xlsx(LeachRateData)
+  #Check for duplicates!! This has occurred in the past and caused an error later on which took hours to figure out!
+  LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
   
-  #rasterize the diffuse source area spatial data, aligning to the Landuse data
-  DiffuseSourceRaster <- rasterize(DiffuseSourceAreas, LanduseData, "nzsegment")
+  #Expand any "All" rows to have a row for each possible combination
+  #Repeat for each of the class types
+  for (ClassColumn in c("Soil.Drainage","Slope","Precipitation")){
+    #Find the unique classes 
+    UniqueClasses <- unique(LeachRateLookUpTable[,ClassColumn])
+    #But don't have "All as a unique class
+    UniqueClasses <- UniqueClasses[!UniqueClasses == "All"]
+    
+    #Get the rows that have "All" in the current class column
+    AllIndices <- which(LeachRateLookUpTable[,ClassColumn] == "All")
+    #work through the "All" indices, duplicating the rows to provide one for each unique classification
+    for (AllIndex in AllIndices){
+      LeachRateLookUpTable[AllIndex,ClassColumn] <- UniqueClasses[1]
+      #Create a small data frame with just the number of rows that match the UniqueClasses (less 1 as the original "All" classed row row can get re-classed as one of the unique classes)
+      ExtraRows <- LeachRateLookUpTable[rep(AllIndex,(length(UniqueClasses)-1)),]
+      #Re-class them to match the unique classes
+      ExtraRows[,ClassColumn] <- UniqueClasses[-1]
+      #And add them on to the end of the look up table
+      LeachRateLookUpTable <- rbind(LeachRateLookUpTable,ExtraRows)
+    } #end of the for loop that worked throught the All indices
+    
+  }
+  #Convert the strings to factors to enable compatibility with the shapefiles and the rasters generated from them
+  LeachRateLookUpTable[,1:5] <- lapply(LeachRateLookUpTable[,1:5], as.factor)
   
-  #Calculate a new raster by adding the nzsegment value to a tenth of the landuse class.
-  #This leads to 88888888888.1, 888888888.2 etc
+  #Create a "CombinedClasses" column
+  LeachRateLookUpTable$CombinedClasses <- do.call(paste,lapply(LeachRateLookUpTable[,c(1,3,4,5)],as.numeric))
   
+  #Now move on to the spatial data
+  #Load the precipitation/irrigation spatial data
+  PrecipIrrigSpatial <- readOGR(PrecipIrrig, stringsAsFactors = TRUE)
+  
+  #Convert to raster, note the creation of a base raster, which all subsequent raster's align to
+  RasterBase <- raster(resolution = Resolution, ext = extent(Domain), crs = proj4string(Domain) )
+  PrecipIrrigRaster <- rasterize(PrecipIrrigSpatial,RasterBase,"Precip2")
+  
+  #Crop to the Complete domain, and then mask to the same
+  PrecipIrrigRaster <- crop(PrecipIrrigRaster,extent(Domain))
+  PrecipIrrigRaster <- mask(PrecipIrrigRaster, Domain)
+  #Add a raster attribute table which labels the values
+  PrecipIrrigRaster <- ratify(PrecipIrrigRaster)
+  rat <- levels(PrecipIrrigRaster)[[1]]
+  rat$PrecipIrrigClass <- levels(PrecipIrrigSpatial@data$Precip2)
+  levels(PrecipIrrigRaster) <- rat
+  #levelplot(PrecipIrrigRaster)
+  
+  #Load slope classification spatial data
+  SlopeClassSpatial <- readOGR(SlopeClassData,stringsAsFactors = TRUE)
+  SlopeClassRaster <- rasterize(SlopeClassSpatial, RasterBase, "Slope_clas")
+  SlopeClassRaster <- crop(SlopeClassRaster,extent(Domain))
+  SlopeClassRaster <- mask(SlopeClassRaster, Domain)
+  #Add a raster attribute table which labels the values
+  SlopeClassRaster <- ratify(SlopeClassRaster)
+  rat <- levels(SlopeClassRaster)[[1]]
+  rat$SlopeClass <- levels(SlopeClassSpatial@data$Slope_clas)
+  levels(SlopeClassRaster) <- rat
+  #levelplot(SlopeClassRaster)
+  
+  #Load irrigated land spatial data
+  SoilDrainageSpatial <- readOGR(SoilDrainageData,stringsAsFactors = TRUE)
+  SoilDrainageRaster <- rasterize(SoilDrainageSpatial, RasterBase, "Drain")
+  SoilDrainageRaster <- crop(SoilDrainageRaster,extent(Domain))
+  SoilDrainageRaster <- mask(SoilDrainageRaster, Domain)
+  #Add a raster attribute table which labels the values
+  SoilDrainageRaster <- ratify(SoilDrainageRaster)
+  rat <- levels(SoilDrainageRaster)[[1]]
+  rat$DrainClass <- levels(SoilDrainageSpatial@data$Drain)
+  levels(SoilDrainageRaster) <- rat
+  #levelplot(SoilDrainageRaster)
+  
+  #Load land use category spatial data
+  LanduseSpatial <- readOGR(LanduseData, stringsAsFactors = TRUE)
+  
+  #Need to match the factor levels of the EcoClass attribute to the factor levels of the LeachRateLookUpTable
+  LanduseSpatial@data$EcoClass <- factor(LanduseSpatial@data$EcoClass, levels = levels(LeachRateLookUpTable$Land.Use))
+  
+  LanduseRaster <- rasterize(LanduseSpatial,RasterBase,"EcoClass")
+  LanduseRaster <- crop(LanduseRaster,extent(Domain))
+  LanduseRaster <- mask(LanduseRaster, Domain)
+  #Add a raster attribute table which labels the values
+  LanduseRaster <- ratify(LanduseRaster)
+  rat <- levels(LanduseRaster)[[1]]
+  rat$LanduseClass <- levels(LanduseSpatial@data$EcoClass)[rat$ID]
+  levels(LanduseRaster) <- rat
+  #levelplot(LanduseRaster)
+  
+  #If Scenarios are provided, then work through them updating the Land Use accordingly
+  for (Scenario in Scenarios){
+    #Iterate the for loop if there is no land use spatial file associated with the Scenario
+    if (!file.exists(file.path(ScenarioLandUseGISFolder,paste0(Scenario[1],'.shp')))) next
+    
+    #Open the scenario land use file
+    ScenarioLandUse <- readOGR(file.path(ScenarioLandUseGISFolder,paste0(Scenario[1],'.shp')), stringsAsFactors = TRUE)
+    
+    #Need to match the factor levels of the EcoClass attribute to the factor levels of the LeachRateLookUpTable
+    ScenarioLandUse@data$EcoClass <- factor(ScenarioLandUse@data$EcoClass, levels = levels(LeachRateLookUpTable$Land.Use))
+    
+    LanduseRaster <- rasterize(ScenarioLandUse,LanduseRaster,"EcoClass",update=TRUE)
+    #Add a raster attribute table which labels the values
+    LanduseRaster <- ratify(LanduseRaster)
+    rat <- levels(LanduseRaster)[[1]]
+    rat$LanduseClass <- levels(LanduseSpatial@data$EcoClass)[rat$ID]
+    levels(LanduseRaster) <- rat
+  }
+
   #Create a raster brick with all the parameters needed to determine the leach rate from the look up table
   PredictorRasters <- brick(LanduseRaster,SoilDrainageRaster,SlopeClassRaster,PrecipIrrigRaster)
   names(PredictorRasters) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
@@ -573,7 +694,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
   PredictorRasters <- rasterize(x=PrecipIrrigSpatial,y=PredictorRasters,mask=TRUE)
   
   #Figure out the leachrates for each of the leach rate types
-  LeachTypes <- c("N.loss.(mean)","N.loss.(median)","P.loss.(mean)","P.loss.(median)")
+  LeachTypes <- c("Nloss.(Mean)","Ploss.(Mean)")
   LeachRateRasters <- lapply(LeachTypes, function(LeachType){
     
     #Use "calc" to work through each x,y cell of the raster brick and select the appropriate leach rate
@@ -597,6 +718,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseRaster,
   
   #Stick all the rasters together as a stack
   OutputRasterStack <- stack(brick(LeachRateRasters),PredictorRasters)
+  
   
   return(OutputRasterStack)
 }
@@ -831,7 +953,7 @@ CASMToSCAMP <- function(CASMData = DiffuseInputsSiteExtendedTable){
   #Create the area distribution table
   #Go from long to wide three times using the Land use variables.
   AreaTable <- as.data.frame(pivot_wider(CASMData,id_cols=c('Catchment Name'),names_from=Landuse,values_from='Land Area (ha)'))
-  
+
   Landuses <- names(AreaTable)[-1]
   
   #Replace NA with 0 for the Landuse values
@@ -1007,4 +1129,94 @@ AttributeDistributionPlot <- function(RECReachNetwork = NA,
     }
     dev.off()
   }
+}
+
+#' A function to determine new wetland attributes
+#' 
+#'  New wetlands impact on water quality through atenuating nutrient loads. The SCAMP
+#'  model can account for that attenuation if the are upsream of the wetland is know
+#'  the land use make up of that are is known.
+#'
+#'[AttributeDistributionPlot()] enables investigation of how representative the SCAMP 
+#'network is to a complete river network 
+#'@param RECReachNetwork The complete RECV2 network
+#'@param RECWatersheds Either the RECV2 watershed sf spatial data, or the filename of the RECV2 spatial data
+#'@param LandUseRaster A raster object of the land use
+#'@paran SubCatchmentSpatial an sf spatial object of the Sub Catchment areas
+#'@parm CompleteDomain A spatial polygon that describes the modelling domain boundary
+#'@param MajorCatchments A spatial polygon file that describes the major catchments
+#'@param SouthlandREC2Utility A data frame of additional REC attributes including
+#' "pctExoticPasture"
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return Three data frames
+#'@keywords REC River Environment Classification
+#'@export
+NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS/ES_REC2V5_Riverlines/ES_REC2V5_Riverlines.shp",
+                                 RECWatersheds = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS/ES_REC2_Watersheds/ES_REC2_Watersheds.shp",
+                                 NewWetlandSpatial = file.path("D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse",
+                                                               "Wetland1.shp"),
+                                 LandUseSpatial = LandUseRaster,
+                                 SubCatchmentSpatial = DiffuseLoadSourceAreas,
+                                 SouthlandREC2Utility = NA){
+  
+  if (!require(dplyr)) install.packages("dplyr"); library(dplyr)
+
+  #Load the Wetland spatial data
+  NewWetlandSpatial <- st_read(NewWetlandSpatial)
+  #Convert the wetland spatial data from multipart to single part
+  NewWetlandSpatial <- st_cast(NewWetlandSpatial,"POLYGON")
+  #Get area of each wetland polygon
+  NewWetlandSpatial$area <-st_area(NewWetlandSpatial)
+  NewWetlandSpatial$WetlandID <- seq(1,nrow(NewWetlandSpatial))
+
+  #Test if the RECReachNetwork is a spatial data file object, if it is, convert to an 
+  #sf object, otherwise assume it is a file name and try to load it
+  if(class(RECReachNetwork) == "SpatialLinesDataFrame") {
+    RECRivers_SF <- st_as_sf(RECReachNetwork)
+  } else {
+    RECRivers_SF <- st_read(RECReachNetwork)
+  }
+  #Re-project to NZTM
+  RECRivers_SF <- st_transform(RECRivers_SF, st_crs(NewWetlandSpatial))
+  
+  #Test if the RECWatersheds is an sf spatial object, if it is not assume it is a file name and try to load it
+  if(class(RECWatersheds)[1] != "sf") {
+      RECWatersheds <- st_read(RECWatersheds)
+      RECWatersheds <- st_transform(RECWatersheds, st_crs(NewWetlandSpatial))
+  }
+
+  #Find the lowest REC reach associated with the new wetland
+  #Intersect the Wetland areas with the REC river network, include a 25 m buffer to account for stream width.
+  #Note that the intersection is with respect each spatial segment, not with each 
+  #feature. So there may be two segments of a single feature (i.e.river reach) that
+  #are close and a middle segment not close. So when plotting you see the segments
+  #and not the features.
+  WetlandRivers <- st_intersection(st_buffer(NewWetlandSpatial,25),RECRivers_SF)
+  #From the intersections get a single row for each wetland area which has the REC reach with the largest CUM_AREA attribute
+  LowestRECReaches <- group_by(WetlandRivers,WetlandID) %>% slice_max(order_by = CUM_AREA)
+  
+  WetlandUpstreamAreas <- CASMNodeSourceAreaGenerator(RECNetwork = RECRivers_SF,RECWatersheds = RECWatersheds, CASMNodes = LowestRECReaches$nzsegment)
+  
+  #Work through each wetland, 1 at a time
+    #find if the wetland is adjacent to existing wetland
+    #use sf::st_intersects
+    #If it is, then get the size of the adjacent wetland and the size of the additional area
+    #Need to get a spatial layer of existing wetlands
+  
+ 
+  
+    #Find the upstream area of the new wetland that is not upstream of an upstream wetland
+    #Get upstream areas for each Wetland
+  
+    #Find the landuse breakdown of the upstream area
+  
+    #Find the area of the sub-catchment that the wetland is within
+  
+    #Report the size of the new wetland as a percentage of the upstream area
+
+    #Report the size of the existing adjacent wetland as a percentage of upstream area
+  
+    #Report the size of the upstream area as a percentage of the sub-catchment
+  
+    #Report the land use breakdown of the upstream are
 }
