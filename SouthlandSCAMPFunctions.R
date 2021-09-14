@@ -1141,33 +1141,29 @@ AttributeDistributionPlot <- function(RECReachNetwork = NA,
 #'network is to a complete river network 
 #'@param RECReachNetwork The complete RECV2 network
 #'@param RECWatersheds Either the RECV2 watershed sf spatial data, or the filename of the RECV2 spatial data
+#'@param NewWetlandSpatial Either the wetland sf spatial data, or it's filename
 #'@param LandUseRaster A raster object of the land use
-#'@paran SubCatchmentSpatial an sf spatial object of the Sub Catchment areas
-#'@parm CompleteDomain A spatial polygon that describes the modelling domain boundary
-#'@param MajorCatchments A spatial polygon file that describes the major catchments
-#'@param SouthlandREC2Utility A data frame of additional REC attributes including
-#' "pctExoticPasture"
+#'@param LandUseLUT A dataframe of Land Use values (ID) and land ue names (category)
+#'@param RainRasterFile Filename and path of a raster file (geoTiff format) of mean annual rainfall
+#'@param SubCatchmentSpatial an sf spatial object of the Sub Catchment areas
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
-#'@return Three data frames
-#'@keywords REC River Environment Classification
+#'@return Data frame of Wetland Information
+#'@keywords REC River Environment Classification Wetlands
 #'@export
 NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS/ES_REC2V5_Riverlines/ES_REC2V5_Riverlines.shp",
                                  RECWatersheds = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS/ES_REC2_Watersheds/ES_REC2_Watersheds.shp",
                                  NewWetlandSpatial = file.path("D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse",
-                                                               "Wetland1.shp"),
-                                 LandUseSpatial = LandUseRaster,
-                                 SubCatchmentSpatial = DiffuseLoadSourceAreas,
-                                 SouthlandREC2Utility = NA){
+                                                               "Wetland1WithExtraAttributes.shp"),
+                                 LandUseRaster = file.path("D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS","PredictorRasterV3 250 x 250.tif"),
+                                 LandUseLUT = NULL,
+                                 RainRasterFile = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\Rainfall19812010.tif",
+                                 SubCatchmentSpatial = file.path("D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS","CASMDiffuseLoadSourceAreas","CASMDiffuseLoadSourceAreas.shp")){
   
-  if (!require(dplyr)) install.packages("dplyr"); library(dplyr)
 
+  if (!require(dplyr)) install.packages("dplyr"); library(dplyr)
+  if (!require(tibble)) install.packages("tibble"); library(tibble)
   #Load the Wetland spatial data
   NewWetlandSpatial <- st_read(NewWetlandSpatial)
-  #Convert the wetland spatial data from multipart to single part
-  NewWetlandSpatial <- st_cast(NewWetlandSpatial,"POLYGON")
-  #Get area of each wetland polygon
-  NewWetlandSpatial$area <-st_area(NewWetlandSpatial)
-  NewWetlandSpatial$WetlandID <- seq(1,nrow(NewWetlandSpatial))
 
   #Test if the RECReachNetwork is a spatial data file object, if it is, convert to an 
   #sf object, otherwise assume it is a file name and try to load it
@@ -1184,39 +1180,151 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       RECWatersheds <- st_read(RECWatersheds)
       RECWatersheds <- st_transform(RECWatersheds, st_crs(NewWetlandSpatial))
   }
+  RECWatersheds <- st_make_valid(RECWatersheds)
 
-  #Find the lowest REC reach associated with the new wetland
-  #Intersect the Wetland areas with the REC river network, include a 25 m buffer to account for stream width.
-  #Note that the intersection is with respect each spatial segment, not with each 
-  #feature. So there may be two segments of a single feature (i.e.river reach) that
-  #are close and a middle segment not close. So when plotting you see the segments
-  #and not the features.
-  WetlandRivers <- st_intersection(st_buffer(NewWetlandSpatial,25),RECRivers_SF)
-  #From the intersections get a single row for each wetland area which has the REC reach with the largest CUM_AREA attribute
-  LowestRECReaches <- group_by(WetlandRivers,WetlandID) %>% slice_max(order_by = CUM_AREA)
+  #Test if the SubCatchmentSpatial is an sf spatial object, if it is not assume it is a file name and try to load it
+  if(class(SubCatchmentSpatial)[1] != "sf") {
+    SubCatchmentSpatial <- st_read(SubCatchmentSpatial)
+  }
+  SubCatchmentSpatial <- st_transform(SubCatchmentSpatial, st_crs(NewWetlandSpatial))
+  SubCatchmentSpatial <- st_make_valid(SubCatchmentSpatial)
   
-  WetlandUpstreamAreas <- CASMNodeSourceAreaGenerator(RECNetwork = RECRivers_SF,RECWatersheds = RECWatersheds, CASMNodes = LowestRECReaches$nzsegment)
-  
-  #Work through each wetland, 1 at a time
-    #find if the wetland is adjacent to existing wetland
-    #use sf::st_intersects
-    #If it is, then get the size of the adjacent wetland and the size of the additional area
-    #Need to get a spatial layer of existing wetlands
-  
- 
-  
-    #Find the upstream area of the new wetland that is not upstream of an upstream wetland
-    #Get upstream areas for each Wetland
-  
-    #Find the landuse breakdown of the upstream area
-  
-    #Find the area of the sub-catchment that the wetland is within
-  
-    #Report the size of the new wetland as a percentage of the upstream area
+  #Test if the LandUseRaster is a raster object, if it is not, assume it is a file and try to load it
+  if(class(LandUseRaster)[1] != "raster") {
+    LandUseRaster <- stack(LandUseRaster)[[1]]
+    #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
+    crs(LandUseRaster) <- st_crs(NewWetlandSpatial)$wkt
+  }
 
-    #Report the size of the existing adjacent wetland as a percentage of upstream area
+  #Load the rain Raster data
+  RainRaster <- raster(RainRasterFile)
+  #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
+  crs(RainRaster) <- st_crs(NewWetlandSpatial)$wkt
   
-    #Report the size of the upstream area as a percentage of the sub-catchment
   
-    #Report the land use breakdown of the upstream are
+  ##Find the lowest REC reach associated with the new wetland
+  ##Intersect the Wetland areas with the REC river network, include a 25 m buffer to account for stream width.
+  ##Note that the intersection is with respect each spatial segment, not with each 
+  ##feature. So there may be two segments of a single feature (i.e.river reach) that
+  ##are close and a middle segment not close. So when plotting you see the segments
+  ##and not the features.
+  #WetlandRivers <- st_intersection(st_buffer(NewWetlandSpatial,25),RECRivers_SF)
+  ##From the intersections get a single row for each wetland area which has the REC reach with the largest CUM_AREA attribute
+  #LowestRECReaches <- group_by(WetlandRivers,WetlandID) %>% slice_max
+  
+  #The wetland spatial file is a whole lot of pieces of wetlands, where each piece 
+  #is a unique wetland-REC watershed combination. Pieces smaller than 500 m2 have been removed.
+  #Each piece has a SCAMP_nzsegment identifier to tell which SCAMP sub catchment it is from.
+  #Each piece also has an nzsegment number, to say which REC watershed it is in.
+  #Each piece has a Number which uniquely identifies each complete wetland, but these
+  #can cross SCAMP boundaries, so each piece also has a combination wetland_number-and-SCAMP_nzsegment
+  #Identifier
+  
+  #Initialise a dataframe that will hold all the Wetland attribute information
+  WetlandInfo <- data.frame(WetlandUniqueNumber = unique(NewWetlandSpatial$WtLdSCID),
+                            SCAMP_nzsegment = NA,
+
+                            UpstreamPctOfSubCatch = NA,
+                            Area_ha = NA,
+                            Annual_precip = NA,
+                            Attenuation = NA,
+                            Comments = NA)
+  #,
+  #                          UpStreamSubCatcments = list())
+  WetlandInfo$SCAMP_nzsegment <-  NewWetlandSpatial$SCAMP_nzs[match(WetlandInfo$WetlandUniqueNumber,NewWetlandSpatial$WtLdSCID)]
+  
+  #work through each sub catchment
+  for (SCAMP_SubCatchment in unique(NewWetlandSpatial$SCAMP_nzs)){
+  #for (SCAMP_SubCatchment in c(15315638)){ #for testing  
+    SubCatchment <- SubCatchmentSpatial[which(SubCatchmentSpatial$SCAMPnzseg == SCAMP_SubCatchment),]
+    SubCatchmentArea <- st_area(SubCatchment)
+    #Select just the wetland areas within the current SCAMP sub catchment
+    WetlandsOfInterest <- NewWetlandSpatial %>% filter(SCAMP_nzs == SCAMP_SubCatchment)
+    
+    #Work through each of the sub-catchment's wetlands
+    for (WetlandUniqueID in unique(WetlandsOfInterest$WtLdSCID)) {
+      #browser()
+      #Select just the wetland areas within the current wetland 
+      SingleWetland <- WetlandsOfInterest %>% filter(WtLdSCID == WetlandUniqueID)
+      #Get the total area of the pieces of wetland
+      WetlandArea <- sum(SingleWetland$Area_m2)
+      WetlandInfo$Area_ha[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- round(WetlandArea / 10000,1)
+      
+      #Figure out the upstream area, within the sub catchment
+      #By getting the upstream area of all the REC watershed components of the wetland
+      WetlandRECWatershedUpstreamAreas <- lapply(unique(SingleWetland$nzsegment), function(REC_watershed) {
+        #browser()
+        #Initialise a vector of nzsegment values for the reaches in the catchment, starting with the wetlands nzsegment
+        CatchmentReaches <- REC_watershed
+        #Get upstream area
+        Upstreamreaches <- RECRivers_SF$nzsegment[which(RECRivers_SF$TO_NODE == RECRivers_SF$FROM_NODE[RECRivers_SF$nzsegment == REC_watershed])]
+        while(length(Upstreamreaches) > 0){
+          CatchmentReaches <- c(CatchmentReaches,Upstreamreaches)
+          Upstreamreaches <- RECRivers_SF$nzsegment[which(RECRivers_SF$TO_NODE %in% RECRivers_SF$FROM_NODE[RECRivers_SF$nzsegment %in% Upstreamreaches])]
+        }
+        UpstreamCatchment <- RECWatersheds[which(RECWatersheds$nzsegment %in% CatchmentReaches),]
+        
+
+        
+
+        return(UpstreamCatchment)
+      })
+      WetlandUpstreamSubCatchment <- do.call(rbind,WetlandRECWatershedUpstreamAreas)
+      WetlandUpstreamSubCatchment <- WetlandUpstreamSubCatchment[!duplicated(WetlandUpstreamSubCatchment$nzsegment),]
+      
+      #Get the mean annual rainfall of the wetlands catchment
+      WetlandCatchmnetRainfall <- mean(raster::extract(RainRaster,as(st_union(WetlandUpstreamSubCatchment),'Spatial'))[[1]],na.rm=TRUE)
+      WetlandInfo$Annual_precip[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- round(WetlandCatchmnetRainfall / 1000,2)
+      
+      #Clip to SCAMP_subcatchment
+      st_agr(SubCatchment) = "constant"
+      st_agr(WetlandUpstreamSubCatchment) = "constant"
+      SubCatchmentUpStreamCatchment <- st_intersection(WetlandUpstreamSubCatchment,SubCatchment)
+      
+      #Need to figure out if the wetland upstream area includes upstream sub catchments.
+      #If it does, then the ID of the immediately upstream subcatchments are needed
+      #Turns out upstream/downstream REC watersheds share an REC segment at their 
+      #intersection.This means that you can intersect a subcatchments nzsegments 
+      #with the outlet nzsegments of all subcatchments, to find the subcatchments of interest,
+      #though this includes the original subcatchment
+      InterSubCatchmentnzsegments <- intersect(SubCatchmentUpStreamCatchment$nzsegment,SubCatchmentSpatial$nzsegment)
+      #Get the unique SCAMP_nzsegment attributes of those immediately upstream subcatchments
+      SubCatchmentsInWetlandUpstreamArea <- unique(SubCatchmentSpatial$SCAMPnzseg[SubCatchmentSpatial$nzsegment %in% InterSubCatchmentnzsegments])
+      #Get rid of the original subcatchment SCAMP_nzsegment
+      SubCatchmentsInWetlandUpstreamArea <- setdiff(SubCatchmentsInWetlandUpstreamArea,SCAMP_SubCatchment)
+      if(length(SubCatchmentsInWetlandUpstreamArea)>0){
+      WetlandInfo$Comments[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- paste0("Upstream area extends to subcatchments: ",paste(SubCatchmentsInWetlandUpstreamArea,collapse=";"))
+      } 
+      
+      #Get the area of the wetland's upstream area
+      SubCatchmentUpStreamCatchmentArea <- st_area(st_union(SubCatchmentUpStreamCatchment))
+      WetlandInfo$UpstreamPctOfSubCatch[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- round(SubCatchmentUpStreamCatchmentArea / sum(SubCatchmentArea) * 100,1)
+      
+      #Get their land use breakdown
+      #See https://gis.stackexchange.com/questions/297852/calculating-statistics-per-area-for-categorical-raster-using-r
+
+      #Get the raster cells within the upstream area
+      LandUseValues <- raster::extract(LandUseRaster,as(st_union(SubCatchmentUpStreamCatchment),'Spatial'))[[1]]
+      #Turn them into factors with levels based on the Land use raster if it has them,
+      #or from the LandUseLUT parameter. This was required because the raster RAT
+      #appears not to get passed through to a function. Need to double check this.
+      if (is.null(LandUseLUT)) LandUseLUT <- levels(LandUseRaster)[[1]][-1,]
+      
+     
+
+      LandUseFactors <- factor(LandUseValues,levels=LandUseLUT$ID,labels = LandUseLUT$category)
+      #get the percentage of each level
+      PctLandUse <- round(prop.table(table(LandUseFactors)) * 100,1)
+      #Add this information to the Wetland Information data frame.
+      WetlandInfo[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID,LandUseLUT$category] <- PctLandUse
+
+      
+    }
+  }
+  
+#Rename and re-order the columns to match the Tim Cox requested layout
+names(WetlandInfo)[c(1:6)] <- c("Wetland Name","Catchment Name","% of Catchment Area",
+                                  "Wetland Size (ha)","Annual Precipitation (m/yr)","Attenuation Rate Constant (m/yr)")
+WetlandInfo <- WetlandInfo[,c(1:3,13,11,9,15,12,16,14,10,8,4:7)]
+return(WetlandInfo)
 }
