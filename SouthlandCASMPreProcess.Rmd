@@ -200,7 +200,7 @@ RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
 
 RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")]<- lapply(RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")],as.numeric)
 
-#Load a maually prepared update file which has manual estimates for corrected attributes for some segments
+#Load a manually prepared update file which has manual estimates for corrected attributes for some segments
 RECUpdateData <- read.table(RECUpdateDataFile,stringsAsFactors = FALSE, sep=",",header=TRUE)
 
 #Update the REC network data with the updates
@@ -385,6 +385,8 @@ if (Scenario == "Default") {
   # writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
   
   LandUseRaster <- LeachRateRaster[[3]]
+  #Change the raster attribute table header to "category", so that it is consistent to the name when loaded direct from a Tiff
+  rat <- levels(LandUseRaster); names(rat[[1]])[2] <- "category"; levels(LandUseRaster) <- rat
   LeachRateRaster <- LeachRateRaster[[1:2]]
 }
 #******************************************************************
@@ -784,11 +786,6 @@ if (!DiffuseSourceAreasOK) {
 
 #While we're here create a lookup table to the landuse classes
 LanduseLUT <- levels(LandUseRaster)[[1]]
-#When the Landuse raster is created from the PredictorRasterFile, the Raster Attribute Table has an "ID" and a "category".
-#When it is saved directly during its creation (usually when updating scenarios), the Raster Attribute Table has an "ID" and a "LanduseClass". This is because the *.tiff format doesn't retain raster attribute table names.
-#for compatability between the two possible sources, make sure the land use name column is called "category".
-names(LanduseLUT)[2] <- "category"
-
 
 #rasterize the diffuse source area spatial data, aligning to the Landuse data
 DiffuseSourceRaster <- rasterize(DiffuseLoadSourceAreas, LandUseRaster, "nzsegment")
@@ -1156,8 +1153,9 @@ writeData(Out, sheet = "Water Quality Stations", x = MeasurementSiteTable)
 addWorksheet(Out, "Assessment Points")
 writeData(Out, sheet = "Assessment Points", x = AssessmentSiteTable)
 
-addWorksheet(Out, "Diffuse Inputs")
-writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location (km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP Physiographic-based attenuation scale estimate","CASMBasin")])
+#Diffuse Inputs is no longer needed as an output sheet
+#addWorksheet(Out, "Diffuse Inputs")
+#writeData(Out, sheet = "Diffuse Inputs", x = DiffuseInputsSiteExtendedTable[,c("nzsegment","Node Name","Receiving Stream","Discharge Location #(km)","Land Area (ha)","TN Export Coeff (kg/ha/yr)","TP Export Coeff (kg/ha/yr)","TN Physiographic-based attenuation scale estimate","TP #Physiographic-based attenuation scale estimate","CASMBasin")])
 
 #New sheets for SCAMP
 
@@ -1189,6 +1187,28 @@ setColWidths(Out,sheet = "Catchment WQ Inputs TP",cols =c(1:3),widths = 'auto')
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=c(4:15),rows=3,style=hs2)
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=6,rows=2,style=subheadingstyle1)
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
+
+if (Scenario %in% c("Wetland1","Wetland3")){
+
+  addWorksheet(Out, "Wetland Inputs")
+ WetlandData <- NewWetlandProperties(RECReachNetwork = RECReachNetwork,
+                                      RECWatersheds = paste0(REC_Catchments,".shp"),
+                                      NewWetlandSpatial = file.path(ScenarioLandUseGISDirectory,paste0(Scenario[1],'WithExtraAttributes.shp')),
+                                      LandUseRaster = LandUseRaster,
+                                      LandUseLUT = LanduseLUT,
+                                      SubCatchmentSpatial = DiffuseLoadSourceAreas)
+  #Fix catchment names by looking up the catchment name based on the SCAMP_nzsegment number
+  CatchmentNames <- SCAMPFormattedDiffuseOutput$AreaTable$'Catchment Name'
+  Catchment_SCAMPnzsegment <- sub('(^[0-9]+).*','\\1',CatchmentNames)
+  WetlandData$'Catchment Name' <- CatchmentNames[match(WetlandData$'Catchment Name',Catchment_SCAMPnzsegment)]
+
+  writeData(Out,sheet = "Wetland Inputs",x = WetlandData, startRow = 3, headerStyle = hs1)
+writeData(Out,sheet = "Wetland Inputs",x = 'Landuse Distribution (%)', xy = c(4,2))
+setColWidths(Out,sheet = "Wetland Inputs",cols =c(1,2,16),widths = 'auto')
+addStyle(Out,sheet = "Wetland Inputs",cols=3:16,rows=3,style=hs2)
+addStyle(Out,sheet = "Wetland Inputs",cols=4,rows=2,style=subheadingstyle1)
+addStyle(Out,sheet = "Wetland Inputs",cols=3:16,rows=4:(nrow(WetlandData)+3),gridExpand = TRUE, style=OnsSD)
+}
 
 saveWorkbook(Out, OutputFileName, overwrite = T)
 ```
