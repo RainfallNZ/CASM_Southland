@@ -40,9 +40,9 @@ Specify any specific scenarios that are to be implemented
 #Scenario <- "Default"
 #Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
-Scenario <- "Wetland1"
+#Scenario <- "Wetland1"
 # Scenario <- "Wetland2"
-# Scenario <- "Wetland3"
+Scenario <- "Wetland3"
 # Scenario <- "Wastewater"
 # Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
@@ -67,7 +67,7 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
 #Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV3bTest"
+OutputBaseFileName <- "SCAMP-InputsV3dTest"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -130,7 +130,8 @@ PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegment
 TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory,"RECV2ReachNameExtras.csv")
 CASMBasinLookupTableFile<- file.path(DataDirectory,"CASMBasinToSouthlandFMULookupTable.csv")
-CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV2.csv")
+#CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV2.csv") Implemented fo SCAMP Input Version3B but ignored by Tim Cox, Caused mismatch between my data, SCAMP data and Ton's REC data.To try to align the data again this file was rolled back to V1 and SCAMP input changed to version 3C. 
+CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocation.csv")
 
 
 #Set the names of some Excel workbooks
@@ -522,7 +523,6 @@ CombinedPoints <- CombinedPoints[!duplicated(CombinedPoints$nzsegment),]
 
 #Add Water management class to it
 CombinedPoints$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(CombinedPoints$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
-
 
 #Get just the assessment points and write to a file
 AssessmentPoints <-  CombinedPoints[!CombinedPoints$Type %in% c("Point Source"),]
@@ -1137,7 +1137,8 @@ file.copy(from = "Icon_warning.png", to=file.path(ProjectDirectory, "/R/CASM_Sou
 The tributary connection table needs to be converted to an Excel Spreadsheet.
 
 
-I need to create an excel table of CASM-Nodes, CASM-Reach-Names, CASM-Reach-Locations, CASM-Reach-Areas, CASM-Reach-Exp.Coeff
+I need to create an excel table of CASM-Nodes, CASM-Reach-Names, CASM-Reach-Locations, CASM-Reach-Areas, CASM-Reach-Exp.Coeff.
+Note that for Wetland Scenarios this can take 10 minutes!!
 ```{r}
 Out <- createWorkbook()
 
@@ -1204,10 +1205,10 @@ if (Scenario %in% c("Wetland1","Wetland3")){
 
   writeData(Out,sheet = "Wetland Inputs",x = WetlandData, startRow = 3, headerStyle = hs1)
 writeData(Out,sheet = "Wetland Inputs",x = 'Landuse Distribution (%)', xy = c(4,2))
-setColWidths(Out,sheet = "Wetland Inputs",cols =c(1,2,16),widths = 'auto')
-addStyle(Out,sheet = "Wetland Inputs",cols=3:16,rows=3,style=hs2)
+setColWidths(Out,sheet = "Wetland Inputs",cols =c(1,2,17,18),widths = 'auto')
+addStyle(Out,sheet = "Wetland Inputs",cols=3:18,rows=3,style=hs2)
 addStyle(Out,sheet = "Wetland Inputs",cols=4,rows=2,style=subheadingstyle1)
-addStyle(Out,sheet = "Wetland Inputs",cols=3:16,rows=4:(nrow(WetlandData)+3),gridExpand = TRUE, style=OnsSD)
+addStyle(Out,sheet = "Wetland Inputs",cols=3:18,rows=4:(nrow(WetlandData)+3),gridExpand = TRUE, style=OnsSD)
 }
 
 saveWorkbook(Out, OutputFileName, overwrite = T)
@@ -1215,7 +1216,8 @@ saveWorkbook(Out, OutputFileName, overwrite = T)
 
 
 If you want to check how different the output spreadsheet is to previous spreadsheets then use the 
-```{r}
+```{r, eval = FALSE}
 bob <- LoadComparer(c(file.path(DataDirectory,"SCAMP-InputsV3b.xlsx"),OutputFileName))
 sum(bob$AbsDiff)
+#Need to write a new comparer for SCAMP input files without the Diffuse Inputs sheet.
 ```
