@@ -9,7 +9,7 @@ if (!require(grDevices)) install.packages("grDevices"); library(grDevices)
 MapData <- readRDS("Data/SpatialData.RDS")
 #map <- readRDS("Data/map.RDS")
 
-#Set the nonline map source to TOPO NZ maps
+#Set the online map source to TOPO NZ maps
 NZTopo250 = 'http://tiles-a.data-cdn.linz.govt.nz/services;key=8ed417cc81ea45a0b92d597307229b80/tiles/v4/layer=52324/EPSG:3857/{z}/{x}/{y}.png'
 NZTopo50 = 'http://tiles-a.data-cdn.linz.govt.nz/services;key=8ed417cc81ea45a0b92d597307229b80/tiles/v4/layer=52343/EPSG:3857/{z}/{x}/{y}.png'
 

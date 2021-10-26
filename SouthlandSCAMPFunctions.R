@@ -1189,12 +1189,12 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
                                  RainRasterFile = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\Rainfall19812010.tif",
                                  SubCatchmentSpatial = file.path("D:\\Projects\\LWP\\SouthlandRegionalForumModelling/Data/GIS","CASMDiffuseLoadSourceAreas","CASMDiffuseLoadSourceAreas.shp")){
   
-
+  
   if (!require(dplyr)) install.packages("dplyr"); library(dplyr)
   if (!require(tibble)) install.packages("tibble"); library(tibble)
   #Load the Wetland spatial data
   NewWetlandSpatial <- st_read(NewWetlandSpatial)
-
+  
   #Test if the RECReachNetwork is a spatial data file object, if it is, convert to an 
   #sf object, otherwise assume it is a file name and try to load it
   if(class(RECReachNetwork) == "SpatialLinesDataFrame") {
@@ -1207,11 +1207,11 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
   
   #Test if the RECWatersheds is an sf spatial object, if it is not assume it is a file name and try to load it
   if(class(RECWatersheds)[1] != "sf") {
-      RECWatersheds <- st_read(RECWatersheds)
-      RECWatersheds <- st_transform(RECWatersheds, st_crs(NewWetlandSpatial))
+    RECWatersheds <- st_read(RECWatersheds)
+    RECWatersheds <- st_transform(RECWatersheds, st_crs(NewWetlandSpatial))
   }
   RECWatersheds <- st_make_valid(RECWatersheds)
-
+  
   #Test if the SubCatchmentSpatial is an sf spatial object, if it is not assume it is a file name and try to load it
   if(class(SubCatchmentSpatial)[1] != "sf") {
     SubCatchmentSpatial <- st_read(SubCatchmentSpatial)
@@ -1225,7 +1225,7 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
     #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
     crs(LandUseRaster) <- st_crs(NewWetlandSpatial)$wkt
   }
-
+  
   #Load the rain Raster data
   RainRaster <- raster(RainRasterFile)
   #Major headache with understanding changes to projections following upgrade to gdal3 and PROJ6
@@ -1255,7 +1255,7 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
   
   #work through each sub catchment
   for (SCAMP_SubCatchment in unique(NewWetlandSpatial$SCAMP_nzs)){
-  #for (SCAMP_SubCatchment in c(15315638)){ #for testing  
+    #for (SCAMP_SubCatchment in c(15315638)){ #for testing  
     SubCatchment <- SubCatchmentSpatial[which(SubCatchmentSpatial$SCAMPnzseg == SCAMP_SubCatchment),]
     SubCatchmentArea <- st_area(SubCatchment)
     #Select just the wetland areas within the current SCAMP sub catchment
@@ -1303,22 +1303,31 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       #Find any down-stream wetlands within the same sub-catchment
       #Work down valley and check for a match to the sub-catchment's wetland's nzsegment number.
       #Stop at the first wetland, and get it's number
-
+      
       for (REC_segment in unique(SingleWetland$nzsegment)) {
         #browser()
         #if (REC_segment == 15318632) browser()
-
+        
         #Initialise a vector of nzsegment values for the reaches in the catchment, starting with the wetlands nzsegment
         #It is possible for two separate wetlands to be associated with the same reach, so start the check from the wetlands reach
         #But check if the wetland has already been considered to be downstream, and so go further downstream.
+        
+        #and also check there are no circular references, so need to work up the chain of wetlands as well, and don't allocate a downstream wetland that is already in the chain.
         Downstreamreach <- REC_segment
-
+        
         #Keep working downstream within the subcatchment until a downstream wetland is found, or there are no reaches left
         while(length(Downstreamreach) > 0){
           #Check if there is a wetland down stream, if there is, set the attribute
-          #The check is for wetlands different to the current wetland, and not already associated (because they're on the same REC reach). This is a bit tricky as I break wetlands into REC watershed pieces.
-          UpstreamWetlands <- WetlandInfo$WetlandUniqueNumber[WetlandInfo$DownStreamWetland == WetlandUniqueID]
-          WetlandRECsToCheckFor <- WetlandsOfInterest[(WetlandsOfInterest$WtLdSCID != WetlandUniqueID) & !(WetlandsOfInterest$WtLdSCID %in% UpstreamWetlands),]
+          #But first check for wetlands different to the current wetland, and not already associated (because they're on the same REC reach). This is a bit tricky as I break wetlands into REC watershed pieces.
+          WetlandChain <- c(WetlandUniqueID)
+          UpstreamWetlands <- WetlandInfo$WetlandUniqueNumber[which(WetlandInfo$DownStreamWetland == WetlandUniqueID)]
+          while( length(UpstreamWetlands) >0){
+            #Look further upstream
+            #browser()
+            WetlandChain <- c(WetlandChain,UpstreamWetlands)
+            UpstreamWetlands <- WetlandInfo$WetlandUniqueNumber[which(WetlandInfo$DownStreamWetland %in% UpstreamWetlands)]
+          }
+          WetlandRECsToCheckFor <- WetlandsOfInterest[(WetlandsOfInterest$WtLdSCID != WetlandUniqueID) & !(WetlandsOfInterest$WtLdSCID %in% WetlandChain),]
           if (any(Downstreamreach %in% WetlandRECsToCheckFor$nzsegment)) {
             #browser()
             WetlandInfo$DownStreamWetland[WetlandInfo$WetlandUniqueNumber == WetlandUniqueID] <-
@@ -1355,8 +1364,8 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       SubCatchmentsInWetlandUpstreamArea <- setdiff(SubCatchmentsInWetlandUpstreamArea,SCAMP_SubCatchment)
       if(length(SubCatchmentsInWetlandUpstreamArea)>0){
         #browser()
-      WetlandInfo$Comments[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- paste0("Upstream area extends to subcatchments: ",paste(SubCatchmentsInWetlandUpstreamArea,collapse=";"))
-      WetlandInfo$HasWetlandOrSubCatchmentUpstream[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- TRUE
+        WetlandInfo$Comments[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- paste0("Upstream area extends to subcatchments: ",paste(SubCatchmentsInWetlandUpstreamArea,collapse=";"))
+        WetlandInfo$HasWetlandOrSubCatchmentUpstream[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- TRUE
       } 
       
       #Get the area of the wetland's upstream area
@@ -1365,7 +1374,7 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       
       #Get their land use breakdown
       #See https://gis.stackexchange.com/questions/297852/calculating-statistics-per-area-for-categorical-raster-using-r
-
+      
       #Get the raster cells within the upstream area
       LandUseValues <- raster::extract(LandUseRaster,as(st_union(SubCatchmentUpStreamCatchment),'Spatial'))[[1]]
       #Turn them into factors with levels based on the Land use raster if it has them,
@@ -1373,24 +1382,24 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       #appears not to get passed through to a function. Need to double check this.
       if (is.null(LandUseLUT)) LandUseLUT <- levels(LandUseRaster)[[1]][-1,]
       
-     
-
+      
+      
       LandUseFactors <- factor(LandUseValues,levels=LandUseLUT$ID,labels = LandUseLUT$category)
       #get the percentage of each level
       PctLandUse <- round(prop.table(table(LandUseFactors)) * 100,1)
       #Add this information to the Wetland Information data frame.
       WetlandInfo[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID,LandUseLUT$category] <- PctLandUse
-
+      
       
     }
   }
-
-#Set all non-True values of the Upstream wetland attribute to False
+  
+  #Set all non-True values of the Upstream wetland attribute to False
   WetlandInfo$HasWetlandOrSubCatchmentUpstream[is.na(WetlandInfo$HasWetlandOrSubCatchmentUpstream)]  <- FALSE
   
-#Rename and re-order the columns to match the Tim Cox requested layout
-names(WetlandInfo)[c(1:8)] <- c("Wetland Name","Catchment Name","% of Catchment Area",
+  #Rename and re-order the columns to match the Tim Cox requested layout
+  names(WetlandInfo)[c(1:8)] <- c("Wetland Name","Catchment Name","% of Catchment Area",
                                   "Wetland Size (ha)","Annual Precipitation (m/yr)","Attenuation Rate Constant (m/yr)","Upstream Wetland or Subcatchment (TRUE/FALSE)","Downstream Wetland")
-WetlandInfo <- WetlandInfo[,c(1:3,15,13,11,17,14,18,16,12,10,4:9)]
-return(WetlandInfo)
+  WetlandInfo <- WetlandInfo[,c(1:3,15,13,11,17,14,18,16,12,10,4:9)]
+  return(WetlandInfo)
 }

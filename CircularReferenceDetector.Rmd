@@ -1,0 +1,67 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is a small script to identify circular references for the Downstream wetlands.
+
+Load libraries
+```{r}
+  if (!require(openxlsx)) install.packages("openxlsx"); library(openxlsx)                #used for reading Excel data
+```
+
+Set Filenames
+```{r}
+WetlandFilename <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\SCAMP-InputsV3fTest_Wetland3.xlsx"
+```
+
+
+Read in the Wetland sheet from the spreadsheet
+```{r}
+WetlandTable <- read.xlsx(WetlandFilename,sheet = "Wetland Inputs",startRow = 3)
+WetlandTableSubset <- WetlandTable[,c("Wetland.Name","Downstream.Wetland")]
+```
+
+Now work through each row, creating a wetland chain until reaching an end of the chain, or create a loop
+```{r}
+CircularReferenceWetlands <- c()
+CircularReferenceCount <- 0
+for (row in seq(1:nrow(WetlandTableSubset))){
+  #browser()
+  cat(paste("Row", row, "Wetland",WetlandTableSubset$Wetland.Name[row],"\n"))
+  ChainedWetlands <- c(WetlandTableSubset$Wetland.Name[row])
+  
+  #Get downstream wetland
+  DownstreamWetland <- WetlandTableSubset$Downstream.Wetland[row]
+  cat(paste(DownstreamWetland,"\n"))
+  while (!is.na(DownstreamWetland)) {
+       
+      if (DownstreamWetland %in% ChainedWetlands){
+      cat(paste("Circular reference: ",DownstreamWetland,"\n"))
+      CircularReferenceCount <- CircularReferenceCount + 1
+      CircularReferenceWetlands <- c(CircularReferenceWetlands,DownstreamWetland)
+      break()
+    }
+    ChainedWetlands <- c(ChainedWetlands,DownstreamWetland)
+    NextIndex <- which(WetlandTableSubset$Wetland.Name == DownstreamWetland)
+    DownstreamWetland <- WetlandTableSubset$Downstream.Wetland[NextIndex]
+    cat(paste(DownstreamWetland,"\n"))
+
+  }
+}
+unique(CircularReferenceWetlands)
+```
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

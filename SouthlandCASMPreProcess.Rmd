@@ -42,9 +42,9 @@ Specify any specific scenarios that are to be implemented
 #Scenario <- "OurLandWater2035Potential"
 #Scenario <- "Wetland1"
 # Scenario <- "Wetland2"
-Scenario <- "Wetland3"
+# Scenario <- "Wetland3"
 # Scenario <- "Wastewater"
-# Scenario <- "Retirement1"
+Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
 # Scenario <- "Restoration"
 # 
@@ -67,7 +67,7 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
 #Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV3dTest"
+OutputBaseFileName <- "SCAMP-InputsV3fTest"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -131,7 +131,7 @@ TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory,"RECV2ReachNameExtras.csv")
 CASMBasinLookupTableFile<- file.path(DataDirectory,"CASMBasinToSouthlandFMULookupTable.csv")
 #CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV2.csv") Implemented fo SCAMP Input Version3B but ignored by Tim Cox, Caused mismatch between my data, SCAMP data and Ton's REC data.To try to align the data again this file was rolled back to V1 and SCAMP input changed to version 3C. 
-CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocation.csv")
+CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocationV3.csv")
 
 
 #Set the names of some Excel workbooks
@@ -369,10 +369,11 @@ if (Scenario == "Default") {
   
   #The LeachRateRaster and the LandUseRaster needs to change for the different scenarios.
   #**********************************************************
-  # This can also be used if the leach rate raster file is missing or needs to be re-created
+  # This can also be used if the lesach rate raster file is missing or needs to be re-created
   #Takes 4 minutes at 250 m
   tic()
   LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
+                                            Domain = CompleteDomain,
                                             SoilDrainageData=SoilDrainageShapeFile,
                                             SlopeClassData=SlopeClassShapeFile,
                                             PrecipIrrig=PrecipIrrigShapeFile,
