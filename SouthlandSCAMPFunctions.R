@@ -608,7 +608,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
   if (!require(openxlsx)) install.packages("openxlsx"); library(openxlsx)                #used for reading Excel data
   
-  #Load look up table of leaching rates based on land use, soil drainage, slope, and precipiation/irrigation
+  #Load look up table of leaching rates based on land use, soil drainage, slope, and precipitation/irrigation
   LeachRateLookUpTable<- read.xlsx(LeachRateData)
   #Check for duplicates!! This has occurred in the past and caused an error later on which took hours to figure out!
   LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
