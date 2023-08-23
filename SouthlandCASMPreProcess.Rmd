@@ -37,14 +37,14 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-#Scenario <- "Default"
+Scenario <- "Default"
 #Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
 #Scenario <- "Wetland1"
 # Scenario <- "Wetland2"
 # Scenario <- "Wetland3"
 # Scenario <- "Wastewater"
-Scenario <- "Retirement1"
+#Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
 # Scenario <- "Restoration"
 # 
@@ -67,7 +67,7 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
 #Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV3fTest"
+OutputBaseFileName <- "SCAMP-InputsV4fTest"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -109,9 +109,9 @@ PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/Precipitati
 #Set the name of raster file data in geoTiff format
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 #LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV2 250 x 250.tif")
-LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV3 250 x 250.tif") #upgraded after provision of Version 3 look up table
+LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV4 250 x 250.tif") #upgraded after provision of Version 4 look up table
 #PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
-PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRasterV3 250 x 250.tif") #upgraded after provision of Version 3 look up table
+PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRasterV4 250 x 250.tif") #upgraded after provision of Version 4 look up table
 PhysiographyBasedAttenuationEstimatesFile <- file.path(GISDataDirectory,"PhysioAttenuationEstimates 250 x 250.tif")
 
 #Set the names of some text tables in csv format
@@ -136,7 +136,8 @@ CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocat
 
 #Set the names of some Excel workbooks
 #LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
-LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V3_1.xlsx")   #Updated early June 2021
+#LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V3_1.xlsx")   #Updated early June 2021
+LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V4.xlsx")     #Updated 23rd August 2023 from "Loss Lookup Table - Updated March 2022.xlsx" provided by Ewen
 PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Attenuation Estimates.xlsx")
 #Water quality load data updated for location shifts
 WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
@@ -369,7 +370,7 @@ if (Scenario == "Default") {
   
   #The LeachRateRaster and the LandUseRaster needs to change for the different scenarios.
   #**********************************************************
-  # This can also be used if the lesach rate raster file is missing or needs to be re-created
+  # This can also be used if the leach rate raster file is missing or needs to be re-created
   #Takes 4 minutes at 250 m
   tic()
   LeachRateRaster <- LeachRateRasterCreator(LanduseData=LanduseShapeFile,
