@@ -311,7 +311,6 @@ NetworkNamer <- function(RECNetwork=MyREC){
       CurrentReachIndex  <- upstream_indices[1]
       LeftToDoIndices    <- LeftToDoIndices[LeftToDoIndices != CurrentReachIndex]
       RowNumber          <- RowNumber + 1
-      #if(RECNetwork$nzsegment[CurrentReachIndex]==15263054) browser()
       IsBranch <- length(upstream_indices) > 1
       #If it is a branch, check that both of the branch reaches have a name
       if(IsBranch){
@@ -369,7 +368,6 @@ NetworkNamer <- function(RECNetwork=MyREC){
 #'@keywords REC River Environment Classification CASM
 #'@export
 TributaryConnectionCreator <- function(RECNetwork = CompleteSpatialNetwork, TributaryLabelList = TribLabelList, OutletReachNameLookUpTable = "NULL",HeadwaterDist=TRUE){
-  #browser()
   #Make sure the nzsegment, headw_dist and LENGTHDOWN attributes are correctly named. This is needed because the RECV2 version available from NIWA has altered attribute names (to meet ESRI column naming limitations)
   #If the nzsegment column is called nzsgmnt then rename it, The NIWA REC2 data has this name.
   names(RECNetwork)[which(names(RECNetwork) == "nzsgmnt")] <- "nzsegment"
@@ -494,7 +492,7 @@ CASMNodeTablePreparer <- function(CASMRECNetwork=RECReachNetwork, NetworkLabelLi
     #Get the catchment name from the reach with the smallest DOWNSTREAM attribute
     SingleCatchmentIndices <- which(CASMRECNetwork$nzsegment %in% SingleCatchmentNetworkLabels$nzsegment)
     CatchmentName <- CASMRECNetwork$Label[SingleCatchmentIndices][which.min(CASMRECNetwork$LENGTHDOWN[SingleCatchmentIndices])]
-    #browser()
+
     #But overwrite this if an OutletReachNameLookUpTable has been provided
     #Lookup the catchment name based on the OutletReachNames look up table. Assume that only one reach in the OutletReachName look up table will match the reach numbers in the tributary.
     if (!OutletReachNameLookUpTable == "NULL") CatchmentName <- OutletReachNameLookUpTable$Name[OutletReachNames$nzsegment %in% CatchmentTribLabels$nzsegment]
@@ -613,34 +611,35 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   #Check for duplicates!! This has occurred in the past and caused an error later on which took hours to figure out!
   LeachRateLookUpTable <- LeachRateLookUpTable[!duplicated(LeachRateLookUpTable[,1:5]),]
   
-  #Expand any "All" rows to have a row for each possible combination
-  #Repeat for each of the class types
-  for (ClassColumn in c("Soil.Drainage","Slope","Precipitation")){
-    #Find the unique classes 
-    UniqueClasses <- unique(LeachRateLookUpTable[,ClassColumn])
-    #But don't have "All as a unique class
-    UniqueClasses <- UniqueClasses[!UniqueClasses == "All"]
-    
-    #Get the rows that have "All" in the current class column
-    AllIndices <- which(LeachRateLookUpTable[,ClassColumn] == "All")
-    #work through the "All" indices, duplicating the rows to provide one for each unique classification
-    for (AllIndex in AllIndices){
-      LeachRateLookUpTable[AllIndex,ClassColumn] <- UniqueClasses[1]
-      #Create a small data frame with just the number of rows that match the UniqueClasses (less 1 as the original "All" classed row row can get re-classed as one of the unique classes)
-      ExtraRows <- LeachRateLookUpTable[rep(AllIndex,(length(UniqueClasses)-1)),]
-      #Re-class them to match the unique classes
-      ExtraRows[,ClassColumn] <- UniqueClasses[-1]
-      #And add them on to the end of the look up table
-      LeachRateLookUpTable <- rbind(LeachRateLookUpTable,ExtraRows)
-    } #end of the for loop that worked throught the All indices
-    
-  }
+  # #Expand any "All" rows to have a row for each possible combination
+  # #Repeat for each of the class types
+  # for (ClassColumn in c("Soil.Drainage","Slope","Precipitation")){
+  #   #Find the unique classes 
+  #   UniqueClasses <- unique(LeachRateLookUpTable[,ClassColumn])
+  #   #Keep NA as one of the unique classes
+  #   UniqueClasses <- c(UniqueClasses,NA)
+  #   #But don't have "All as a unique class
+  #   UniqueClasses <- UniqueClasses[!UniqueClasses == "All"]
+  # 
+  #   #Get the rows that have "All" in the current class column
+  #   AllIndices <- which(LeachRateLookUpTable[,ClassColumn] == "All")
+  #   #work through the "All" indices, duplicating the rows to provide one for each unique classification
+  #   for (AllIndex in AllIndices){
+  #     LeachRateLookUpTable[AllIndex,ClassColumn] <- UniqueClasses[1]
+  #     #Create a small data frame with just the number of rows that match the UniqueClasses (less 1 as the original "All" classed row row can get re-classed as one of the unique classes)
+  #     ExtraRows <- LeachRateLookUpTable[rep(AllIndex,(length(UniqueClasses)-1)),]
+  #     #Re-class them to match the unique classes
+  #     ExtraRows[,ClassColumn] <- UniqueClasses[-1]
+  #     #And add them on to the end of the look up table
+  #     LeachRateLookUpTable <- rbind(LeachRateLookUpTable,ExtraRows)
+  #   } #end of the for loop that worked through the All indices
+  #   
+  # }
   #Convert the strings to factors to enable compatibility with the shapefiles and the rasters generated from them
   LeachRateLookUpTable[,1:5] <- lapply(LeachRateLookUpTable[,1:5], as.factor)
-  
+
   #Create a "CombinedClasses" column
   LeachRateLookUpTable$CombinedClasses <- do.call(paste,lapply(LeachRateLookUpTable[,c(1,3,4,5)],as.numeric))
-  
   #Now move on to the spatial data
   #Load the precipitation/irrigation spatial data
   PrecipIrrigSpatial <- readOGR(PrecipIrrig, stringsAsFactors = TRUE)
@@ -658,7 +657,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   rat$PrecipIrrigClass <- levels(PrecipIrrigSpatial@data$Precip2)
   levels(PrecipIrrigRaster) <- rat
   #levelplot(PrecipIrrigRaster)
-  
+
   #Load slope classification spatial data
   SlopeClassSpatial <- readOGR(SlopeClassData,stringsAsFactors = TRUE)
   SlopeClassRaster <- rasterize(SlopeClassSpatial, RasterBase, "Slope_clas")
@@ -670,7 +669,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   rat$SlopeClass <- levels(SlopeClassSpatial@data$Slope_clas)
   levels(SlopeClassRaster) <- rat
   #levelplot(SlopeClassRaster)
-  
+
   #Load irrigated land spatial data
   SoilDrainageSpatial <- readOGR(SoilDrainageData,stringsAsFactors = TRUE)
   SoilDrainageRaster <- rasterize(SoilDrainageSpatial, RasterBase, "Drain")
@@ -682,7 +681,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   rat$DrainClass <- levels(SoilDrainageSpatial@data$Drain)
   levels(SoilDrainageRaster) <- rat
   #levelplot(SoilDrainageRaster)
-  
+
   #Load land use category spatial data
   LanduseSpatial <- readOGR(LanduseData, stringsAsFactors = TRUE)
   
@@ -698,7 +697,7 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   rat$LanduseClass <- levels(LanduseSpatial@data$EcoClass)[rat$ID]
   levels(LanduseRaster) <- rat
   #levelplot(LanduseRaster)
-  
+
   #If Scenarios are provided, then work through them updating the Land Use accordingly
   for (Scenario in Scenarios){
     #Iterate the for loop if there is no land use spatial file associated with the Scenario
@@ -723,17 +722,15 @@ LeachRateRasterCreator <- function(LanduseData=LanduseShapeFile,
   names(PredictorRasters) <- c("Landuse","SoilDrainage","SlopeClass","PrecipIrrig")
   #Mask the raster brick to just the Southland FMU areas as given in the PrecipIrrig polygon layer.
   PredictorRasters <- rasterize(x=PrecipIrrigSpatial,y=PredictorRasters,mask=TRUE)
-  
+
   #Figure out the leachrates for each of the leach rate types
   LeachTypes <- c("Nloss.(Mean)","Ploss.(Mean)")
   LeachRateRasters <- lapply(LeachTypes, function(LeachType){
-    
     #Use "calc" to work through each x,y cell of the raster brick and select the appropriate leach rate
     LeachRateRaster <- calc(PredictorRasters, function(x) {
-      #browser()
+
       #Concatenate the predictor values of the current x,y, cell
       CriteriaToLookup <- paste(x,collapse=" ")
-      #if(all(complete.cases(x))) browser()
       #lookup the current cell's predictor string in the look up table
       LeachRate <- LeachRateLookUpTable[LeachRateLookUpTable$CombinedClasses %in% CriteriaToLookup,LeachType]
       
@@ -880,7 +877,6 @@ LossRaterReductionRasterCreator <- function(LandTypes=LanduseShapeFile,
   if (!require(raster)) install.packages("raster"); library(raster)                #used for spatial processing
   if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
   if (!require(rasterVis)) install.packages("rasterVis"); library(rasterVis)                #used for plotting discrete rasters
-  #browser()
 
   #Join the look up table to the spatial data
   LandTypes$LossRateReduction <- MitigationLookUpTable[match(LandTypes$Typology,MitigationLookUpTable$Typology),2]
@@ -899,7 +895,7 @@ LossRaterReductionRasterCreator <- function(LandTypes=LanduseShapeFile,
 #'@param LeachRates A raster stack of leach rates. Raster 1 is for N, raster 2 is for P
 #'@param MitigationDataFile A csv file of Our Land and Water mitigation loads. This file
 #'was generated from the tables provided in the McDowell et al (2020) supplementary material.
-#'@param MitigationOfInterest The name of our Land and Water mitigaion scenario to apply.
+#'@param MitigationOfInterest The name of our Land and Water mitigation scenario to apply.
 #'Currently limited to one of "Potential2015", the default, and "Potential2035",  
 #'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
 #'@return A raster stack of leach rates adjusted by the mitigation scenario 
@@ -1269,7 +1265,7 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
     
     #Work through each of the sub-catchment's wetlands
     for (WetlandUniqueID in unique(WetlandsOfInterest$WtLdSCID)) {
-      #browser()
+
       #Select just the wetland areas within the current wetland 
       SingleWetland <- WetlandsOfInterest %>% filter(WtLdSCID == WetlandUniqueID)
       #Get the total area of the pieces of wetland
@@ -1279,18 +1275,18 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       #Figure out the upstream area, within the sub catchment
       #By getting the upstream area of all the REC watershed components of the wetland
       WetlandRECWatershedUpstreamAreas <- lapply(unique(SingleWetland$nzsegment), function(REC_watershed) {
-        #browser()
+
         #Initialise a vector of nzsegment values for the reaches in the catchment, starting with the wetlands nzsegment
         CatchmentReaches <- REC_watershed
         #Get upstream area
         Upstreamreaches <- RECRivers_SF$nzsegment[which(RECRivers_SF$TO_NODE == RECRivers_SF$FROM_NODE[RECRivers_SF$nzsegment == REC_watershed])]
         while(length(Upstreamreaches) > 0){
-          #browser()
+
           #Check if there are any wetlands upstream, if there are, set the global variable. This is bad form, so I should fix it at some later date....
           #The check is for wetlands different to the current wetland. This is a bit tricky as I break wetlands into REC watershed pieces.
           WetlandRECsToCheckFor <- NewWetlandSpatial$nzsegment[NewWetlandSpatial$WtLdSCID != WetlandUniqueID]
           if (any(Upstreamreaches %in% WetlandRECsToCheckFor)) {
-            #browser()
+
             WetlandInfo$HasWetlandOrSubCatchmentUpstream[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <<- TRUE }
           CatchmentReaches <- c(CatchmentReaches,Upstreamreaches)
           Upstreamreaches <- RECRivers_SF$nzsegment[which(RECRivers_SF$TO_NODE %in% RECRivers_SF$FROM_NODE[RECRivers_SF$nzsegment %in% Upstreamreaches])]
@@ -1305,9 +1301,6 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       #Stop at the first wetland, and get it's number
       
       for (REC_segment in unique(SingleWetland$nzsegment)) {
-        #browser()
-        #if (REC_segment == 15318632) browser()
-        
         #Initialise a vector of nzsegment values for the reaches in the catchment, starting with the wetlands nzsegment
         #It is possible for two separate wetlands to be associated with the same reach, so start the check from the wetlands reach
         #But check if the wetland has already been considered to be downstream, and so go further downstream.
@@ -1323,13 +1316,11 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
           UpstreamWetlands <- WetlandInfo$WetlandUniqueNumber[which(WetlandInfo$DownStreamWetland == WetlandUniqueID)]
           while( length(UpstreamWetlands) >0){
             #Look further upstream
-            #browser()
             WetlandChain <- c(WetlandChain,UpstreamWetlands)
             UpstreamWetlands <- WetlandInfo$WetlandUniqueNumber[which(WetlandInfo$DownStreamWetland %in% UpstreamWetlands)]
           }
           WetlandRECsToCheckFor <- WetlandsOfInterest[(WetlandsOfInterest$WtLdSCID != WetlandUniqueID) & !(WetlandsOfInterest$WtLdSCID %in% WetlandChain),]
           if (any(Downstreamreach %in% WetlandRECsToCheckFor$nzsegment)) {
-            #browser()
             WetlandInfo$DownStreamWetland[WetlandInfo$WetlandUniqueNumber == WetlandUniqueID] <-
               WetlandRECsToCheckFor$WtLdSCID[match(Downstreamreach,WetlandRECsToCheckFor$nzsegment)]
             break
@@ -1363,7 +1354,6 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
       #Get rid of the original subcatchment SCAMP_nzsegment
       SubCatchmentsInWetlandUpstreamArea <- setdiff(SubCatchmentsInWetlandUpstreamArea,SCAMP_SubCatchment)
       if(length(SubCatchmentsInWetlandUpstreamArea)>0){
-        #browser()
         WetlandInfo$Comments[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- paste0("Upstream area extends to subcatchments: ",paste(SubCatchmentsInWetlandUpstreamArea,collapse=";"))
         WetlandInfo$HasWetlandOrSubCatchmentUpstream[WetlandInfo$WetlandUniqueNumber==WetlandUniqueID] <- TRUE
       } 
@@ -1402,4 +1392,43 @@ NewWetlandProperties <- function(RECReachNetwork = "D:\\Projects\\LWP\\Southland
                                   "Wetland Size (ha)","Annual Precipitation (m/yr)","Attenuation Rate Constant (m/yr)","Upstream Wetland or Subcatchment (TRUE/FALSE)","Downstream Wetland")
   WetlandInfo <- WetlandInfo[,c(1:3,15,13,11,17,14,18,16,12,10,4:9)]
   return(WetlandInfo)
+}
+
+
+#' A function to adjust the leachrate rasters using a polygon shape file
+#'
+#'This function generates a raster object of adjusted leach rates
+#'
+#'@param LeachRates A terra SpatRaster stack of leach rates. Raster 1 is for N, raster 2 is for P
+#'@param PercentChange the percentage change to apply to the leach rates within the polygons
+#'@param PolygonShapeFile The polygon shapefile within which to adjust the leach rates 
+#'@author Tim Kerr, \email{Tim.Kerr@@Rainfall.NZ}
+#'@return A SpatRaster stack of leach rates adjusted by the PercentChange within the PolygonShapeFile 
+#'@keywords Water Quality, CASM, SCAMP, leach
+#'@export
+LeachRateAdjustmentByShapeFile <- function(LeachRates=LeachRateRaster,
+                                           PercentChange = 50,
+                                           PolygonShapeFile = "ESLand"){
+  
+  if (!require(terra)) install.packages("terra",repos="https://cloud.r-project.org"); library(terra)                #used for spatial processing
+  #if (!require(rgdal)) install.packages("rgdal"); library(rgdal)                #used for spatial processing
+  if (!require(rasterVis)) install.packages("rasterVis",repos="https://cloud.r-project.org"); library(rasterVis)                #used for plotting discrete rasters
+  if (!require(sf)) install.packages("sf",repos="https://cloud.r-project.org"); library(sf)                #used for spatial data
+  
+  #Check that the raster is a SpatRaster object, and if not, convert it
+  if (is.Raster(LeachRates)) LeachRates <- as(LeachRates,"SpatRaster")
+
+  #Read in the Polygon Spatial data, and combine into a single spatial file
+  PolygonSpatialData <- terra::vect(x = PolygonShapeFile)
+  
+  #Convert the spatial data to raster
+  ChangeRaster <- terra::rasterize(PolygonSpatialData,LeachRates[[1]],values = 1,background = 0)
+  
+  #Get the leach rates within the polygon area and multiply by the percent change
+  LeachRatesWithinPolygon <- terra::mask(LeachRates,PolygonSpatialData) * PercentChange / 100
+  
+  adjustedRaster <- terra::merge(LeachRatesWithinPolygon,LeachRates)
+
+
+  return(adjustedRaster)
 }

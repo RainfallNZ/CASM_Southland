@@ -37,16 +37,18 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-Scenario <- "Default"
-#Scenario <- "OurLandWater2015Potential"
+#Scenario <- "Default"
+Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
 #Scenario <- "Wetland1"
 # Scenario <- "Wetland2"
 # Scenario <- "Wetland3"
 # Scenario <- "Wastewater"
-#Scenario <- "Retirement1"
+# Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
 # Scenario <- "Restoration"
+# Scenario <- "PotentialForestry"
+# Scenario <- "PlantainAndOLW"
 # 
 # Scenario <- c("Wetland1","Wastewater","Restoration")
 # Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration")
@@ -56,6 +58,7 @@ Scenario <- "Default"
 # Scenario <- c("OurLandWater2035Potential","Wetland3","Wastewater","Restoration")
 # Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration","Retirement1")
 # Scenario <- c("OurLandWater2035Potential","Wetland1","Wastewater","Restoration","Retirement2")
+# Scenario <- c("Wetland1","PlantainAndOLW","Wastewater","PotentialForestry","ESLand")
 ```
 
 
@@ -67,7 +70,7 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
 #Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV4fTest"
+OutputBaseFileName <- "SCAMP-InputsV4Test"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -126,6 +129,7 @@ EstuarySiteFile         <- "Estuaries.csv"
 NZsegmentToWaterPlanClassLookUpTableFile <-  file.path(DataDirectory,"REC2WaterPlanV1.csv")
 UnnecesaryAssessmentSitesFile <-  file.path(DataDirectory,"SubcatchmentJunctionSitesNotRequired.csv")
 PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegmentAssigned.csv")
+if (any(Scenario %in% c("Wastewater"))) PointSourceSitesFile    <- file.path(DataDirectory,"SldPointSourceLoadsNZSegmentAssigned_WastewaterScenarioV1.csv")
 #TeAoMaramaSitesFile    <- file.path(DataDirectory,"TeAoMaramaSites.csv")
 TeAoMaramaSitesFile     <- file.path(DataDirectory,"TeAoMaramaSites_UTF_8.csv")
 ExtraRECReachLabelsFile <- file.path(DataDirectory,"RECV2ReachNameExtras.csv")
@@ -137,17 +141,20 @@ CASMnzsegOverrideFile   <- file.path(DataDirectory,"CASMnzsegmentOverideForLocat
 #Set the names of some Excel workbooks
 #LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table DRAFT_V2_1.xlsx")   #This was supplied by Ewen from Environment Southland, but edited by Tim Kerr to make the Landuse classes match the spatial data
 #LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V3_1.xlsx")   #Updated early June 2021
-LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V4.xlsx")     #Updated 23rd August 2023 from "Loss Lookup Table - Updated March 2022.xlsx" provided by Ewen
+LeachRateLUTFile        <- file.path(DataDirectory,"Losses Lookup Table V4_1.xlsx")     #Updated 23rd August 2023 from "Loss Lookup Table - Updated March 2022.xlsx" provided by Ewen, and expandede "All" classes on 1st September
 PhysiographicAttenuationLookupTableFile <- file.path(DataDirectory,"Relative Attenuation Estimates.xlsx")
 #Water quality load data updated for location shifts
 WaterQualityDataUpdateFile <- file.path(DataDirectory,"July2020_loads_at_locationswithnotablydifferentnzsegmentV2.xlsx" )
 
-if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential"))){
+if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential","PlantainAndOLW"))){
   OLWMitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoadsV2.csv"
   OLWDairyLandTypesSpatialFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesDairy\\OLW_Southland_TypologiesDairy.shp"
   OLWSheepAndBeefLandTypeSpatialDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\GIS\\OLW_Southland_TypologiesSnB\\OLW_Southland_TypologiesSnB.shp"
 }
-
+if (any(Scenario %in% c("PlantainAndOLW"))){
+  OLWMitigationDataFile = "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data\\OurLandAndWaterMitigationLoadsV2WithPlantainEffect.csv"
+}
+ESLandPolygonFile <- "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ESLand\\ESLand.shp"
 ```
 
 
@@ -194,20 +201,24 @@ NZsegmentToWaterPlanClassLookUpTable <- read.table(NZsegmentToWaterPlanClassLook
 #REC data has been sourced from LWP data stores.
 #Unfortunately some of the associated attributes have not been updated after the network has been.
 #This is known to affect the "headw_dist" attribute
-RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
-                           layer = REC_rivers, stringsAsFactors = FALSE)
-
-RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
-#Explicitly set the "headw_dist","nzsegment","TO_NODE","FROM_NODE" attributes to numeric
-
-RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")]<- lapply(RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")],as.numeric)
-
-#Load a manually prepared update file which has manual estimates for corrected attributes for some segments
-RECUpdateData <- read.table(RECUpdateDataFile,stringsAsFactors = FALSE, sep=",",header=TRUE)
-
-#Update the REC network data with the updates
-RECReachNetwork$headw_dist[match(RECUpdateData$nzsegment,RECReachNetwork$nzsegment)] <- RECUpdateData$headw_dist
-
+if (!exists("RECReachNetwork")){
+  RECReachNetwork <- readOGR(dsn =file.path(GISDataDirectory,REC_rivers),
+                             layer = REC_rivers, stringsAsFactors = FALSE)
+  
+  RECReachNetwork <- spTransform(RECReachNetwork,CRS("+init=epsg:2193") )
+  #Explicitly set the "headw_dist","nzsegment","TO_NODE","FROM_NODE" attributes to numeric
+  
+  RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")]<- lapply(RECReachNetwork@data[,c("headw_dist","nzsegment","TO_NODE","FROM_NODE")],as.numeric)
+  
+  #Load a manually prepared update file which has manual estimates for corrected attributes for some segments
+  RECUpdateData <- read.table(RECUpdateDataFile,stringsAsFactors = FALSE, sep=",",header=TRUE)
+  
+  #Update the REC network data with the updates
+  RECReachNetwork$headw_dist[match(RECUpdateData$nzsegment,RECReachNetwork$nzsegment)] <- RECUpdateData$headw_dist
+  
+  #Add the Environment Southland Water Plan Class to the REC2 data
+  RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
+}
 #Load the REC2 utility data with lots of useful stuff in it, including river names
 load(REC2UtilityFile)   #This provides the REC2Utility data frame
 #Cut it down to Southland
@@ -228,19 +239,6 @@ SouthlandREC2Utility <- join(SouthlandREC2Utility,SouthlandREC2ExtraUtility, typ
 SouthlandREC2Utility$pctExoticPasture <- SouthlandREC2Utility$UpstreamHighProducingExoticPasture / SouthlandREC2Utility$catAreaKM2 /10000
 #Fix the five aberrant values 
 SouthlandREC2Utility$pctExoticPasture[SouthlandREC2Utility$pctExoticPasture > 100] <- 100
-
-
-# #For the REC3 network, need to change the name of some columns for compatibility with functions developed for RECV2
-# #nzseg_v3 to nzsegment
-# names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "nzseg_v3")] <- "nzsegment"
-# #ups_length to headw_dist
-# names(RECReachNetwork@data)[which(names(RECReachNetwork@data) == "ups_length")] <- "headw_dist"
-
-# #For the REC3 network, need to make some columns numeric
-# RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")] <- lapply(RECReachNetwork@data[,c("Order_","nzsegment","FROM_NODE","TO_NODE")],as.numeric)
-
-##Add the Environment Southland Water Plan Class to the REC2 data
-RECReachNetwork$WaterPlan <- NZsegmentToWaterPlanClassLookUpTable$WaterPlanV1[match(RECReachNetwork$nzsegment, NZsegmentToWaterPlanClassLookUpTable$nzsegment)]
 
 #Restrict it to just the major catchments of interest
 #RECReachNetwork <- gIntersection(RECReachNetwork,CompleteDomain,byid =TRUE)
@@ -762,7 +760,7 @@ names(DiffuseSiteTable) <- c("nzsegment","Site Name or No","Target Stream","Down
 # WaiauIndices <- which(DiffuseSiteTable$nzsegment %in% WaiauFlowCorrection$nzsegment)
 # DiffuseSiteTable$`Mean flow (m3/s)`[WaiauIndices] <- WaiauFlowCorrection$QMean[match(DiffuseSiteTable$nzsegment[WaiauIndices],WaiauFlowCorrection$nzsegment)] 
 
-#Now it is necesary to prepare the actual diffuse data for the source area of each diffuse source point
+#Now it is necessary to prepare the actual diffuse data for the source area of each diffuse source point
 #Load the source areas file if it has been pre-prepared. If it hasn't manually check that it should be. Note that this takes about 15 minutes!
 DiffuseSourceAreasOK <- FALSE
 if(file.exists(DiffuseLoadSourceAreasFile)) {
@@ -809,14 +807,24 @@ levels(DiffuseSourceLanduse) <- rat
 #crs(LeachRateRaster) <- sf::st_crs(2193)$wkt
 
 #OldLeachRateRaster <- LeachRateRaster
-if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential"))){
+if (any(Scenario %in% c("OurLandWater2015Potential","OurLandWater2035Potential","PlantainAndOLW"))){
   MitigationScenario = paste0("Potential",gsub("^[a-z,A-Z]*([0-9]+).*$","\\1",Scenario))
+  if (any(Scenario %in% c("PlantainAndOLW")) ) MitigationScenario <- "Potential2015"
   #Adjust the LeachRateRasters for the Our Land and Water Mitigation scenarios
   LeachRateRaster <- LeachRateAdjuster(LeachRates = LeachRateRaster,
                                        MitigationDataFile = OLWMitigationDataFile,
                                        MitigationOfInterest = MitigationScenario,
                                        DairyLandTypeSpatialDataFile = OLWDairyLandTypesSpatialFile,
                                        SheepAndBeefLandTypeSpatialDataFile = OLWSheepAndBeefLandTypeSpatialDataFile)
+}
+
+if (any(Scenario %in% c("ESLand"))){
+  #Adjust the LeachRateRasters for ESLand
+  LeachRateRaster <- LeachRateAdjustmentByShapeFile(LeachRates = LeachRateRaster,
+                                       PercentChange = 50,
+                                       PolygonShapeFile = ESLandPolygonFile)
+  #Need to eventually remove all use of the Raster package objects, but in the interim convert back to a stack object
+  LeachRateRaster <- raster::stack(LeachRateRaster)
 }
   
   #Get the total nitrogen leach rates for each unique combination of source area and land use
@@ -1191,7 +1199,7 @@ addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=c(4:15),rows=3,style=hs2)
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=6,rows=2,style=subheadingstyle1)
 addStyle(Out,sheet = "Catchment WQ Inputs TP",cols=5:15,rows=4:(nrow(SCAMPFormattedDiffuseOutput$NTable)+3),gridExpand = TRUE, style=OnsSD)
 
-if (Scenario %in% c("Wetland1","Wetland3")){
+if (any(Scenario %in% c("Wetland1","Wetland3"))){
 
   addWorksheet(Out, "Wetland Inputs")
  WetlandData <- NewWetlandProperties(RECReachNetwork = RECReachNetwork,
@@ -1219,7 +1227,7 @@ saveWorkbook(Out, OutputFileName, overwrite = T)
 
 If you want to check how different the output spreadsheet is to previous spreadsheets then use the 
 ```{r, eval = FALSE}
-bob <- LoadComparer(c(file.path(DataDirectory,"SCAMP-InputsV3b.xlsx"),OutputFileName))
+bob <- LoadComparerV2(c(file.path(DataDirectory,"SCAMP-InputsV4.xlsx"),OutputFileName))
 sum(bob$AbsDiff)
 #Need to write a new comparer for SCAMP input files without the Diffuse Inputs sheet.
 ```
