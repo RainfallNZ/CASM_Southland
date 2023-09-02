@@ -37,8 +37,8 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-#Scenario <- "Default"
-Scenario <- "OurLandWater2015Potential"
+# Scenario <- "Default"
+#Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
 #Scenario <- "Wetland1"
 # Scenario <- "Wetland2"
@@ -47,7 +47,7 @@ Scenario <- "OurLandWater2015Potential"
 # Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
 # Scenario <- "Restoration"
-# Scenario <- "PotentialForestry"
+Scenario <- "PotentialForestry"
 # Scenario <- "PlantainAndOLW"
 # 
 # Scenario <- c("Wetland1","Wastewater","Restoration")
@@ -70,7 +70,7 @@ GISDataDirectory  <- file.path(DataDirectory,"GIS")
 ScenarioLandUseGISDirectory = "D:\\Projects\\LWP\\SouthlandSCAMP\\Data\\GIS\\ScenarioLandUse"
 
 #Set the output file name. If a scenario is being run, then the scenario name will be tacked on to the end of the file name
-OutputBaseFileName <- "SCAMP-InputsV4Test"
+OutputBaseFileName <- "SCAMP-InputsV4_1Test"
 if (Scenario == "Default"){
 OutputFileName <- file.path(DataDirectory,paste0(OutputBaseFileName,".xlsx"))
 } else {
@@ -112,9 +112,9 @@ PrecipIrrigShapeFile    <- file.path(GISDataDirectory,"LanduseLayers/Precipitati
 #Set the name of raster file data in geoTiff format
 WaterPlanClassificationRasterFile <- file.path(GISDataDirectory,"ES_PlanClassification.tif") #A raster file
 #LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV2 250 x 250.tif")
-LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV4 250 x 250.tif") #upgraded after provision of Version 4 look up table
+LeachRateRasterFile     <- file.path(GISDataDirectory,"LeachRateRasterV4_1 250 x 250.tif") #upgraded after provision of Version 4 look up table
 #PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRaster 250 x 250.tif")
-PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRasterV4 250 x 250.tif") #upgraded after provision of Version 4 look up table
+PredictorRasterFile     <- file.path(GISDataDirectory,"PredictorRasterV4_1 250 x 250.tif") #upgraded after provision of Version 4 look up table
 PhysiographyBasedAttenuationEstimatesFile <- file.path(GISDataDirectory,"PhysioAttenuationEstimates 250 x 250.tif")
 
 #Set the names of some text tables in csv format
@@ -382,8 +382,8 @@ if (Scenario == "Default") {
                                             Scenarios = Scenario)
   toc()
   # #And save it for nexttime if this is to replace the default
-  # writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
-  # writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
+  #writeRaster(LeachRateRaster[[1:2]],LeachRateRasterFile,overwrite=TRUE)
+  #writeRaster(LeachRateRaster[[3:6]],PredictorRasterFile,overwrite=TRUE)
   
   LandUseRaster <- LeachRateRaster[[3]]
   #Change the raster attribute table header to "category", so that it is consistent to the name when loaded direct from a Tiff
