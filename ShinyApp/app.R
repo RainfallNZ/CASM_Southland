@@ -123,7 +123,7 @@ map <- map %>%
               group="Groundwater Management Zones")
 
 map <- map %>%
-  addPolygons(data=MapData$DiffuseSourceAreas,
+  addPolygons(data=MapData$SCAMPSubCatchments,
               fillOpacity = 0,
               weight = 2,
               opacity = 1,
@@ -131,7 +131,7 @@ map <- map %>%
               highlight = highlightOptions(
                 weight = 5,
                 color = "#FFF"),
-              label = ~nzsegment,
+              label = ~SCAMPnzseg,
               group="Diffuse load source areas")
 
 #Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7

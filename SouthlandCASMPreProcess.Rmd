@@ -37,7 +37,7 @@ source("D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\R\\CASM_Southland\\S
 
 Specify any specific scenarios that are to be implemented
 ```{r}
-# Scenario <- "Default"
+Scenario <- "Default"
 #Scenario <- "OurLandWater2015Potential"
 #Scenario <- "OurLandWater2035Potential"
 #Scenario <- "Wetland1"
@@ -47,7 +47,7 @@ Specify any specific scenarios that are to be implemented
 # Scenario <- "Retirement1"
 # Scenario <- "Retirement2"
 # Scenario <- "Restoration"
-Scenario <- "PotentialForestry"
+# Scenario <- "PotentialForestry"
 # Scenario <- "PlantainAndOLW"
 # 
 # Scenario <- c("Wetland1","Wastewater","Restoration")
@@ -927,13 +927,16 @@ RECForMaps <- ms_simplify(RECForMaps)
 #The CASM refined network doesn't have all the reaches, so not everything can be named. For the small side tributaries this gives them the right name. If it was ignored and the naming was done after the CASM override was done, then the names would transfer to the overriden reach which is often a large river, so you wouldn't really know where it was.
 SubCatchmentConfluencePointsSpatial$RiverName <- AllPointsCompleteSpatialNetwork$Label[match(SubCatchmentConfluencePointsSpatial$nzsegment,AllPointsCompleteSpatialNetwork$nzsegment)]
 
-
+#Create a SCAMP subcatchment polygon spatial file by dissolving DiffuseLoadSourceAreas on SCAMPnzseg
+SCAMPSubCatchments <- DiffuseLoadSourceAreas %>% group_by(SCAMPnzseg) %>%
+  summarise(geometry = sf::st_union(geometry)) %>%
+  ungroup()
 
 #Reproject the vector spatial data to the maps projection ready for plotting
 #Note that the raster data was reprojected when it was loaded.
 #SpatialData <- list(MeasurementSites=MeasurementSitesSpatial, PointSourceSites=PointSourceSitesSpatial,
 #                    SubZones=SubZonePolygons,RiverNetwork=CompleteSpatialNetwork)
-SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial,DiffuseSourceAreas = as(DiffuseLoadSourceAreas,"Spatial"))
+SpatialData <- list(MeasurementSites=MeasurementSites,LakeSites=LakeSites,EstuarySites=EstuarySitesSpatial,SubCatchmentSites=SubCatchmentConfluencePointsSpatial,RiverMouthSites=RiverMouthSites, RiverNetwork=RECForMaps,MajorCatchments=MajorCatchments,GroundwaterZones=GroundwaterZones, PointSourceSites=PointSourcesSpatial, TeAoMaramaSites=TeAoMaramaSpatial,SCAMPSubCatchments = as(SCAMPSubCatchments,"Spatial"))
 
 SpatialData <- lapply(SpatialData, function(SingleLayer) {
   SingleLayer$CASMnzsegment <- SingleLayer$nzsegment
@@ -1065,7 +1068,7 @@ map <- map %>%
   group="Groundwater Management Zones")
 
 map <- map %>%
-  addPolygons(data=MapData$DiffuseSourceAreas,
+  addPolygons(data=MapData$SCAMPSubCatchments,
   fillOpacity = 0,
   weight = 2,
   opacity = 1,
@@ -1073,7 +1076,7 @@ map <- map %>%
   highlight = highlightOptions(
     weight = 5,
     color = "#FFF"),
-  label = ~nzsegment,
+  label = ~SCAMPnzseg,
   group="Diffuse load source areas")
 
 #Add the Physiography raster. Note the custom palette to Match the Environment Southland colours as given in https://www.arcgis.com/home/webmap/viewer.html?useExisting=1&layers=fe2093666347411d92b4d0d5f4677af7
