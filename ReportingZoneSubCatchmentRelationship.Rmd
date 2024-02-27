@@ -1,0 +1,78 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Notebook to create a table of Reporting Catchments and Scamp Sub-catchments.
+
+The Reporting catchments were intersected with the sub catchments, selecting the ones with the greatest area.
+The nzsegment numbers were related to the sub-catchment names using an example SCAMP input spreadsheet.
+
+Use spatial processing from the terra package 
+
+This is on-request of Tim Cox.
+Assume it is related to Tranche 2 output.
+
+```{r}
+if (!require(openxlsx)) install.packages('openxlsx'); library(openxlsx)
+if (!require(terra)) install.packages('terra'); library(terra)
+if (!require(tidyr)) install.packages('tidyr'); library(tidyr)
+```
+
+Set file names and directories
+```{r}
+DataDirectory <- "D:\\Projects\\LWP\\SouthlandRegionalForumModelling\\Data"
+
+#File name of the spatial "Reporting zones" AKA "fact sheet zones" as supplied by Ewan Rodway on the 12th Feb 2024.
+ReportingZoneSpatialDataFileName <- "D:/Projects/LWP/SouthlandSCAMP/Data/GIS/PlansReports_DBO_PCTReportingCatchments/PlansReports_DBO_PCTReportingCatchments.shp"
+
+#Set the file name for spatial data with the SCAMP sub catchments
+SCAMPSubCatchmentsSpatialFileName <- "D:/Projects/LWP/SouthlandSCAMP/Data/GIS/Subcatchments/Subcatchments.shp"
+
+#Set the file name for a SCAMP input file that contains the SCAMP sub-catchments names
+SCAMPExampleInputFileName <- file.path(DataDirectory,"SCAMP-InputsV4_1_Baseline.xlsx")
+```
+
+Load data
+```{r}
+ReportingZones <- terra::vect(ReportingZoneSpatialDataFileName)
+SCAMPSubCatchments <- terra::vect(SCAMPSubCatchmentsSpatialFileName) %>% 
+  terra::project(terra::crs(ReportingZones))
+SCAMPNodeReachData <- read.xlsx(SCAMPExampleInputFileName, sheet = "Catchment Physical Inputs",startRow = 3,cols = c(1:5))
+SCAMPNodeReachData$nzsegment <- gsub('^([0-9]{8})-.*','\\1',SCAMPNodeReachData$'Catchment.Name') %>% as.numeric
+```
+
+Intersect the reporting area and the sub-catchments
+For subcatchments that intersect multiple reporting zones, identify them and remove the minority ones.
+Note that the sub-catchments do not nest perfectly within the reporting zone boundaries.
+This results in some sub-catchments intersecting with multiple reporting zones.
+This was resolved by allocating the sub-catchment to the reporting zone with the most area intersected.
+
+There were also some sub-catchments that are not in the reporting zones. The major ones are the three in the south west.
+These still intersected, but were subsequently removed using the requirement that over half of the sub-catchment needs to be in a reporting zone for it to be retained.
+
+Even after all that, the reporting zones include the headwaters of the Kaiwera and Waipahi which flows into the Clutha and has not been included in the SCAMP modelling.
+Similarly the head of the Mariwea Stream is part of a reporting zone that is different reporting zone that the majority of its SCAMP subcatchment is within.
+
+```{r}
+SCAMPSubCatchments$SCArea <- terra::expanse(SCAMPSubCatchments)
+SCAMP_RZ_Intsn <- terra::intersect(ReportingZones,SCAMPSubCatchments)
+SCAMP_RZ_Intsn$area <- terra::expanse(SCAMP_RZ_Intsn)
+#Re-order by size, from big to small
+SCAMP_RZ_Intsn <- SCAMP_RZ_Intsn[order(SCAMP_RZ_Intsn$area, decreasing = TRUE),]
+NoDupsSCAMP_RZ_Intsn <- SCAMP_RZ_Intsn[!duplicated(SCAMP_RZ_Intsn$SCAMPnzseg),]
+
+#Check that intersected area is greater than 50 %
+NoDupsSCAMP_RZ_IntsnNoSlivers <- NoDupsSCAMP_RZ_Intsn[NoDupsSCAMP_RZ_Intsn$area > (NoDupsSCAMP_RZ_Intsn$SCArea * 0.5),]
+
+#Get the SCAMP Sub-catchment names added
+NoDupsSCAMP_RZ_IntsnNoSlivers$SCAMPName <- SCAMPNodeReachData$'Catchment.Name'[base::match(NoDupsSCAMP_RZ_IntsnNoSlivers$SCAMPnzseg,SCAMPNodeReachData$nzsegment)]
+
+#Save to a csv file for provision to Tim Cox
+OutputData <- data.frame(NoDupsSCAMP_RZ_IntsnNoSlivers) %>% dplyr::select(FactSheetZ,nzsegment,SCAMPnzseg,SCAMPName)
+write.csv(OutputData,file=file.path(DataDirectory,"ReportingZones_SCAMPSubCatchments.csv"),row.names = FALSE)
+
+#Save a spatial file to check in QGIS
+terra::writeVector(NoDupsSCAMP_RZ_IntsnNoSlivers,"D:/Projects/LWP/SouthlandSCAMP/Data/GIS/Subcatchments/ReportingZones_SCAMPSubCatchments.shp")
+```
+
